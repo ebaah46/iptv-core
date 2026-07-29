@@ -19,6 +19,4 @@ pub struct Channel {
     pub closed: DateTime<Utc>,
     pub website: String,
     pub network: String,
-    feeds: Vec<Feed>,
-
 }

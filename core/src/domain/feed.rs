@@ -15,5 +15,4 @@ pub struct Feed{
     pub broadcast_codes: Vec<String>,
     pub language_codes: Vec<String>,
     pub is_main: bool,
-    streams: Vec<Stream>
 }
