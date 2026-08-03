@@ -1,9 +1,9 @@
 /**
 * Channel contains iptv channels identity and metadata.
 */
-use chrono::{DateTime, Utc};
+use chrono::NaiveDate;
 use serde::Deserialize;
-use crate::domain::feed::Feed;
+
 
 #[derive(Debug, Deserialize)]
 pub struct Channel {
@@ -12,11 +12,9 @@ pub struct Channel {
     pub alt_names: Vec<String>,
     pub category_ids: Vec<String>,
     pub country_code: String,
-    pub owners: Vec<String>,
     pub is_nsfw: bool,
-    pub launched: DateTime<Utc>,
-    pub logo_url: String,
-    pub closed: DateTime<Utc>,
+    pub launched: Option<NaiveDate>,
+    pub closed: Option<NaiveDate>,
     pub website: String,
     pub network: String,
 }
