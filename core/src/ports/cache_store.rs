@@ -9,11 +9,11 @@ use anyhow::Result as Res;
 
 pub trait CacheStore {
     // Retrieve cached data
-    fn get<T: Into<String>>(&self, key: T) -> Res<String>;
+    fn get(&self, key: &str) -> Res<String>;
 
     // Store data in cache
-    fn set<T: Into<String>>(&self, key: T, value: T) -> Res<()>;
+    fn set(&self, key: &str, value: &str) -> Res<()>;
 
     // Remove item from cache
-    fn remove<T: Into<String>>(&self, key: T) -> Res<()>;
+    fn remove(&self, key: &str) -> Res<()>;
 }
