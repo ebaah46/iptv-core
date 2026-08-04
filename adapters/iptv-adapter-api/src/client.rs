@@ -4,6 +4,7 @@ use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::Method;
 use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
 use serde::Serialize;
+use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::io::BufReader;
 use std::marker::PhantomData;
@@ -89,7 +90,7 @@ impl HttpClient {
         mut callback: F,
     ) -> Res<Vec<Target>>
     where
-        T: DeserializeOwned,
+        T: DeserializeOwned + Debug,
         Q: Serialize + Sized,
         P: Into<String>,
         F: FnMut(T) -> Option<Target>,
@@ -98,8 +99,9 @@ impl HttpClient {
         if let Some(q) = query {
             req = req.query(q);
         }
-        let response = req.send().context("Failed to send streaming GET request")?;
 
+        let response = req.send().context("Failed to send streaming GET request")?;
+        info!("url:{}", response.url());
         let status = response.status();
         if !status.is_success() {
             let error = response.text().unwrap_or_default();
@@ -111,13 +113,14 @@ impl HttpClient {
         let mut transformed_collection = vec![];
 
         let visitor: StreamArrayVisitor<T, _> = StreamArrayVisitor::new(|data_dto: T| {
+            println!("Starting mapper with callback dto:{:?}", data_dto);
             if let Some(mapped) = callback(data_dto) {
                 transformed_collection.push(mapped);
             }
         });
 
         if let Err(e) = deserializer.deserialize_seq(visitor) {
-            info!(
+            println!(
                 "HttpClient - get_stream - failed to deserialize sequence: {}",
                 e
             );

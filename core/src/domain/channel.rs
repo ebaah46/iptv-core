@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Channel {
     pub id: String,
     pub name: String,
