@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 * Programs that are scheduled for channels
 */
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Program {
     pub channel_id: String,
     pub title: String,

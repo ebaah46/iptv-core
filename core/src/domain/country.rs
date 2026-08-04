@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 * Countries that channels broadcast from
 */
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Country {
     pub code: String,
     pub name: String,

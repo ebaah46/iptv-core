@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 * Categories of broadcasts that channels provide.
 */
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Category {
     pub id: String,
     pub name: String,
