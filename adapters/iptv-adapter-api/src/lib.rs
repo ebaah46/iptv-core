@@ -1,9 +1,12 @@
 #![feature(unboxed_closures)]
 
-mod client;
+pub mod client;
 mod dto;
+pub mod iptv_rest_client;
 mod mapper;
 
+pub use client::HttpClient;
+pub use iptv_rest_client::IptvRestClient;
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }

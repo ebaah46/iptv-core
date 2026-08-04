@@ -1,14 +1,8 @@
 pub mod domain;
-mod ports;
-
-use domain::Channel;
+pub mod ports;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn it_works() {
-
-    }
+    fn it_works() {}
 }
