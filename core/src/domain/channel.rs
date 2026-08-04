@@ -18,3 +18,5 @@ pub struct Channel {
     pub website: String,
     pub network: String,
 }
+
+pub type Channels = Vec<Channel>;

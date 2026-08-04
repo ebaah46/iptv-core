@@ -11,3 +11,5 @@ pub struct Country {
     pub languages: Vec<String>,
     pub flag_url: String,
 }
+
+pub type Countries = Vec<Country>;

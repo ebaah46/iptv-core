@@ -10,3 +10,5 @@ pub struct Category {
     pub name: String,
     pub description: String,
 }
+
+pub type Categories = Vec<Category>;

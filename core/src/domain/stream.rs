@@ -15,3 +15,5 @@ pub struct Stream {
     pub title: String,
     pub user_agent: String,
 }
+
+pub type Streams = Vec<Stream>;

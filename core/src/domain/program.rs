@@ -13,3 +13,5 @@ pub struct Program {
     pub start: DateTime<Utc>,
     pub stop: DateTime<Utc>,
 }
+
+pub type Programs = Vec<Program>;

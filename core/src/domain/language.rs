@@ -9,3 +9,5 @@ pub struct Language {
     pub code: String,
     pub name: String,
 }
+
+pub type Languages = Vec<Language>;

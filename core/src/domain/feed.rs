@@ -1,10 +1,10 @@
-use crate::domain::stream::Stream;
 /**
 * The feed that each channel contains. Feed has access to the streams
 * which contain urls that can be loaded into a video player to begin
 * streaming.
 */
 use serde::Deserialize;
+
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct Feed {
@@ -15,3 +15,5 @@ pub struct Feed {
     pub language_codes: Vec<String>,
     pub is_main: bool,
 }
+
+pub type Feeds = Vec<Feed>;

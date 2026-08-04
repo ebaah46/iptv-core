@@ -6,10 +6,10 @@ pub mod language;
 pub mod program;
 pub mod stream;
 
-pub use category::Category;
-pub use channel::Channel;
-pub use country::Country;
-pub use feed::Feed;
-pub use language::Language;
-pub use program::Program;
-pub use stream::Stream;
+pub use category::{Categories, Category};
+pub use channel::{Channel, Channels};
+pub use country::{Countries, Country};
+pub use feed::{Feed, Feeds};
+pub use language::{Language, Languages};
+pub use program::{Program, Programs};
+pub use stream::{Stream, Streams};
