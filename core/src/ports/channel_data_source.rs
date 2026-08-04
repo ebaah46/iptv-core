@@ -1,10 +1,12 @@
-use crate::domain::Channel;
-use crate::domain::feed::Feed;
-use crate::domain::stream::Stream;
-use anyhow::{Result as Res};
-use crate::domain::country::Country;
-use crate::domain::language::Language;
-use crate::domain::program::Program;
+use crate::domain::category::Categories;
+use crate::domain::country::Countries;
+use crate::domain::feed::Feeds;
+use crate::domain::language::Languages;
+use crate::domain::program::Programs;
+use crate::domain::stream::Streams;
+use crate::domain::Channels;
+use anyhow::Result as Res;
+use std::fmt::Debug;
 
 /**
 * Describes the way in which the library retrieves the raw catalog and guide
@@ -14,23 +16,25 @@ use crate::domain::program::Program;
 * This trait is model after what is provided by https:://www.iptv.org
 */
 
-pub trait ChannelDataSource {
+pub trait ChannelDataSource: Debug {
     // Retrieve channels available in this IPTV repository
-    fn fetch_channels(&self) -> Res<Vec<Channel>>;
+    fn fetch_channels(&self) -> Res<Channels>;
 
-    // Retrieve list of feeds provided by this IPTV repository
-    fn fetch_feeds(&self) -> Res<Vec<Feed>>;
+    // Retrieve a list of feeds provided by this IPTV repository
+    fn fetch_feeds(&self) -> Res<Feeds>;
 
-    // Retrieves list of streams provided by this IPTV repository
-    fn fetch_streams(&self) -> Res<Vec<Stream>>;
+    // Retrieves a list of streams provided by this IPTV repository
+    fn fetch_streams(&self) -> Res<Streams>;
 
-    // Retrieve list of countries provided by this IPTV repository
-    fn fetch_countries(&self) -> Res<Vec<Country>>;
+    // Retrieve a list of countries provided by this IPTV repository
+    fn fetch_countries(&self) -> Res<Countries>;
 
-    // Retrieves list of languages provided by this IPTV repository
-    fn fetch_languages(&self) -> Res<Vec<Language>>;
+    // Retrieves a list of languages provided by this IPTV repository
+    fn fetch_languages(&self) -> Res<Languages>;
 
-    // Retrieves list of languages provided by this IPTV repository
-    fn fetch_guides(&self) -> Res<Vec<Program>>;
+    // Retrieves a list of languages provided by this IPTV repository
+    fn fetch_guides(&self) -> Res<Programs>;
 
+    // Retrieves a list of categories for the provided channels
+    fn fetch_categories(&self) -> Res<Categories>;
 }

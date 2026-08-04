@@ -1,9 +1,9 @@
-use crate::dto::{ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
+use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
 use crate::HttpClient;
 use anyhow::Result as Res;
 use core::domain::{
-    channel::Channel, country::Country, feed::Feed, language::Language, program::Program,
-    stream::Stream,
+    channel::Channels, country::Countries, feed::Feeds, language::Languages, program::Programs,
+    stream::Streams, Categories,
 };
 use core::ports::ChannelDataSource;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ impl IptvRestClient {
 }
 
 impl ChannelDataSource for IptvRestClient {
-    fn fetch_channels(&self) -> Res<Vec<Channel>> {
+    fn fetch_channels(&self) -> Res<Channels> {
         let path = "/channels.json";
         let query: Option<&()> = None;
         let channels = self.client.get_stream(path, query, |dto: ChannelDTO| {
@@ -34,7 +34,7 @@ impl ChannelDataSource for IptvRestClient {
         Ok(channels)
     }
 
-    fn fetch_feeds(&self) -> Res<Vec<Feed>> {
+    fn fetch_feeds(&self) -> Res<Feeds> {
         let path = "/feeds.json";
         let query: Option<&()> = None;
         let feeds = self
@@ -43,7 +43,7 @@ impl ChannelDataSource for IptvRestClient {
         Ok(feeds)
     }
 
-    fn fetch_streams(&self) -> Res<Vec<Stream>> {
+    fn fetch_streams(&self) -> Res<Streams> {
         let path = "/streams.json";
         let query: Option<&()> = None;
         let streams = self.client.get_stream(path, query, |dto: StreamDTO| {
@@ -52,7 +52,7 @@ impl ChannelDataSource for IptvRestClient {
         Ok(streams)
     }
 
-    fn fetch_countries(&self) -> Res<Vec<Country>> {
+    fn fetch_countries(&self) -> Res<Countries> {
         let path = "/countries.json";
         let query: Option<&()> = None;
         let countries = self.client.get_stream(path, query, |dto: CountryDTO| {
@@ -61,7 +61,7 @@ impl ChannelDataSource for IptvRestClient {
         Ok(countries)
     }
 
-    fn fetch_languages(&self) -> Res<Vec<Language>> {
+    fn fetch_languages(&self) -> Res<Languages> {
         let path = "/languages.json";
         let query: Option<&()> = None;
         let languages = self.client.get_stream(path, query, |dto: LanguageDTO| {
@@ -70,7 +70,16 @@ impl ChannelDataSource for IptvRestClient {
         Ok(languages)
     }
 
-    fn fetch_guides(&self) -> Res<Vec<Program>> {
+    fn fetch_categories(&self) -> Res<Categories> {
+        let path = "/categories.json";
+        let query: Option<&()> = None;
+        let categories = self.client.get_stream(path, query, |dto: CategoryDTO| {
+            crate::mapper::map_category_dto(dto)
+        })?;
+        Ok(categories)
+    }
+
+    fn fetch_guides(&self) -> Res<Programs> {
         todo!()
     }
 }
@@ -79,7 +88,7 @@ impl ChannelDataSource for IptvRestClient {
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use core::domain::{Channel, Feed};
+    use core::domain::{Channel, Country, Feed, Language, Stream};
     use httpmock::prelude::{Method, GET};
     use httpmock::MockServer;
     use serde_json::{json, Value};
