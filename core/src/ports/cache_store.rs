@@ -1,4 +1,5 @@
 use anyhow::Result as Res;
+use std::fmt::Debug;
 
 /**
 * Describes the way in which the library receives or holds the
@@ -7,7 +8,7 @@ use anyhow::Result as Res;
 * catalog information. Cache can be file-based or in-memory.
 */
 
-pub trait CacheStore {
+pub trait CacheStore: Debug {
     // Retrieve cached data
     fn get(&self, key: &str) -> Res<String>;
 

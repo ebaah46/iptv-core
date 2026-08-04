@@ -16,7 +16,7 @@ use std::fmt::Debug;
 * This trait is model after what is provided by https:://www.iptv.org
 */
 
-pub trait ChannelDataSource: Debug {
+pub trait ChannelDataSource: Debug + Send + Sync {
     // Retrieve channels available in this IPTV repository
     fn fetch_channels(&self) -> Res<Channels>;
 
