@@ -3,10 +3,10 @@
 * which contain urls that can be loaded into a video player to begin
 * streaming.
 */
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Feed {
     pub id: String,
     pub channel_id: String,

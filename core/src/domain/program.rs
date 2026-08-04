@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /**
 * Programs that are scheduled for channels
 */
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Program {
     pub channel_id: String,
     pub title: String,

@@ -2,10 +2,10 @@
 * Stream is the core component of the iptv system that contains the url
 * used for accessing the TV channel.
 */
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Stream {
     pub channel_id: String,
     pub feed_id: String,

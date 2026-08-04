@@ -2,10 +2,10 @@
 * Channel contains iptv channels identity and metadata.
 */
 use chrono::NaiveDate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Channel {
     pub id: String,
     pub name: String,
