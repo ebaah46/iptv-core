@@ -2,7 +2,9 @@ use crate::domain::{Categories, Channel, Channels, Countries, Feeds, Languages, 
 use crate::ports::{CacheStore, ChannelDataSource};
 use log::info;
 use parking_lot::RwLock;
+use serde::de::IntoDeserializer;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 /**
@@ -11,22 +13,18 @@ use std::sync::Arc;
 * raw data access.
 * Services that handle the core logic can depend on this trait for access to data.
 */
-pub trait CatalogRepository {
+pub trait CatalogRepository: Debug + Send + Sync {
     /// Fetch all channels in this repository.
     fn get_channels(&self) -> Channels;
 
     /// Get channels with a given channel id
-    fn get_channel_by_id(&self, channel_id: impl Into<String>) -> Option<Channel>;
+    fn get_channel_by_id(&self, channel_id: &str) -> Option<Channel>;
 
     /// Get all the feeds associated with a channel
-    fn get_feeds_by_channel(&self, channel_id: impl Into<String>) -> Option<Feeds>;
+    fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds>;
 
     /// Get all streams associated with a given channel
-    fn get_candidate_streams(
-        &self,
-        channel_id: impl Into<String>,
-        feed_id: Option<impl Into<String>>,
-    ) -> Option<Streams>;
+    fn get_candidate_streams(&self, channel_id: &str, feed_id: Option<&str>) -> Option<Streams>;
 
     /// Refresh or reload data from data sources
     fn refresh(&self);
@@ -110,25 +108,21 @@ impl CatalogRepository for IptvCatalogRepository {
         read_guard.values().cloned().collect()
     }
 
-    fn get_channel_by_id(&self, channel_id: impl Into<String>) -> Option<Channel> {
+    fn get_channel_by_id(&self, channel_id: &str) -> Option<Channel> {
         let read_guard = self.channels.read();
-        read_guard.get(&channel_id.into()).cloned()
+        read_guard.get(channel_id).cloned()
     }
 
-    fn get_feeds_by_channel(&self, channel_id: impl Into<String>) -> Option<Feeds> {
+    fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds> {
         let read_guard = self.feeds_by_channel.read();
-        read_guard.get(&channel_id.into()).cloned()
+        read_guard.get(channel_id).cloned()
     }
 
-    fn get_candidate_streams(
-        &self,
-        channel_id: impl Into<String>,
-        feed_id: Option<impl Into<String>>,
-    ) -> Option<Streams> {
+    fn get_candidate_streams(&self, channel_id: &str, feed_id: Option<&str>) -> Option<Streams> {
         let read_guard = self.streams_by_key.read();
         // Normalize: treat Some("") the same as None so reads align
-        // with the write side which stores empty feed_id as None.
-        let feed_key = feed_id.map(|s| s.into()).filter(|s| !s.is_empty());
+        // with the feed side which stores empty feed_id as None.
+        let feed_key = feed_id.filter(|s| !s.is_empty()).map(|s| s.into());
         read_guard.get(&(channel_id.into(), feed_key)).cloned()
     }
 
@@ -499,7 +493,7 @@ mod tests {
 
         // Empty feed_id streams are stored under the None key ...
         assert_eq!(
-            repository.get_candidate_streams("ch1", None::<String>),
+            repository.get_candidate_streams("ch1", None::<&str>),
             Some(vec![stream("ch1", "")])
         );
         // ... and Some("") is normalized to None on the read path.
@@ -619,7 +613,7 @@ mod tests {
         // Known channel, no feed (the only stream is tied to a specific feed).
         assert!(
             repository
-                .get_candidate_streams("ch1", None::<String>)
+                .get_candidate_streams("ch1", None::<&str>)
                 .is_none()
         );
     }
@@ -695,7 +689,7 @@ mod tests {
         );
         assert!(
             repository
-                .get_candidate_streams("any", None::<String>)
+                .get_candidate_streams("any", None::<&str>)
                 .is_none()
         );
     }
