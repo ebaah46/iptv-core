@@ -2,7 +2,6 @@ use crate::domain::{Categories, Channel, Channels, Countries, Feeds, Languages, 
 use crate::ports::{CacheStore, ChannelDataSource};
 use log::info;
 use parking_lot::RwLock;
-use serde::de::IntoDeserializer;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -26,6 +25,15 @@ pub trait CatalogRepository: Debug + Send + Sync {
     /// Get all streams associated with a given channel
     fn get_candidate_streams(&self, channel_id: &str, feed_id: Option<&str>) -> Option<Streams>;
 
+    /// Retrieve all categories of channels available
+    fn get_categories(&self) -> Categories;
+
+    /// Retrieve all countries of channels available
+    fn get_countries(&self) -> Countries;
+
+    /// Retrieve all languages of channels available
+    fn get_languages(&self) -> Languages;
+
     /// Refresh or reload data from data sources
     fn refresh(&self);
 }
@@ -41,6 +49,9 @@ pub struct IptvCatalogRepository {
     channels: RwLock<HashMap<String, Channel>>,
     feeds_by_channel: RwLock<HashMap<String, Feeds>>,
     streams_by_key: RwLock<HashMap<(String, Option<String>), Streams>>,
+    categories: RwLock<Categories>,
+    countries: RwLock<Countries>,
+    languages: RwLock<Languages>,
 }
 
 impl IptvCatalogRepository {
@@ -51,6 +62,9 @@ impl IptvCatalogRepository {
             channels: Default::default(),
             feeds_by_channel: Default::default(),
             streams_by_key: Default::default(),
+            categories: Default::default(),
+            countries: Default::default(),
+            languages: Default::default(),
         }
     }
     fn fetch_catalog(&self) -> CatalogSnapShot {
@@ -126,6 +140,21 @@ impl CatalogRepository for IptvCatalogRepository {
         read_guard.get(&(channel_id.into(), feed_key)).cloned()
     }
 
+    fn get_categories(&self) -> Categories {
+        let read_guard = self.categories.read();
+        read_guard.clone()
+    }
+
+    fn get_countries(&self) -> Countries {
+        let read_guard = self.countries.read();
+        read_guard.clone()
+    }
+
+    fn get_languages(&self) -> Languages {
+        let read_guard = self.languages.read();
+        read_guard.clone()
+    }
+
     fn refresh(&self) {
         let snapshot = self.fetch_catalog();
         if let Ok(()) = self.cache.save_channels(&snapshot.channels) {
@@ -160,6 +189,18 @@ impl CatalogRepository for IptvCatalogRepository {
                     .push(stream);
             }
             *self.streams_by_key.write() = streams_by_key;
+        }
+
+        if let Ok(()) = self.cache.save_categories(&snapshot.categories) {
+            *self.categories.write() = snapshot.categories;
+        }
+
+        if let Ok(()) = self.cache.save_countries(&snapshot.countries) {
+            *self.countries.write() = snapshot.countries;
+        }
+
+        if let Ok(()) = self.cache.save_languages(&snapshot.languages) {
+            *self.languages.write() = snapshot.languages;
         }
     }
 }
