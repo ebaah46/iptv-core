@@ -34,13 +34,13 @@ impl IptvCatalogService {
 
 impl CatalogService for IptvCatalogService {
     fn search(&self, query: &str) -> Channels {
-        let channels = self.inner.get_channels();
         if query.is_empty() {
             return vec![];
         }
         let query = query.to_ascii_lowercase();
-        channels
-            .iter()
+        self.inner
+            .get_channels()
+            .into_iter()
             .filter(|channel| {
                 channel.name.to_ascii_lowercase().contains(&query)
                     || !channel
@@ -50,7 +50,6 @@ impl CatalogService for IptvCatalogService {
                         .collect::<Vec<&String>>()
                         .is_empty()
             })
-            .cloned()
             .collect()
     }
 
@@ -58,19 +57,17 @@ impl CatalogService for IptvCatalogService {
         if category_id.is_empty() {
             return vec![];
         }
-        let category_id = category_id.to_ascii_lowercase();
         self.inner
             .get_channels()
-            .iter()
+            .into_iter()
             .filter(|channel| {
                 !channel
                     .category_ids
                     .iter()
-                    .filter(|category| category.contains(&category_id))
+                    .filter(|category| category.eq_ignore_ascii_case(category_id))
                     .collect::<Vec<&String>>()
                     .is_empty()
             })
-            .cloned()
             .collect()
     }
 
@@ -78,35 +75,34 @@ impl CatalogService for IptvCatalogService {
         if country_code.is_empty() {
             return vec![];
         }
-        let country_code = country_code.to_ascii_lowercase();
         self.inner
             .get_channels()
-            .iter()
-            .filter(|channel| {
-                channel
-                    .country_code
-                    .to_ascii_lowercase()
-                    .contains(&country_code)
-            })
-            .cloned()
+            .into_iter()
+            .filter(|channel| channel.country_code.eq_ignore_ascii_case(&country_code))
             .collect()
     }
 
     fn filter_by_language(&self, language_code: &str) -> Channels {
-        // Requires access to countries list
-        // if language_code.is_empty() {
-        //     return vec![];
-        // }
-        // self.inner.get_channels().iter().filter(|channel| channel.)
-
-        todo!()
+        if language_code.is_empty() {
+            return vec![];
+        }
+        let country = self.inner.get_countries().into_iter().find(|country| {
+            country
+                .languages
+                .iter()
+                .any(|lang| lang.to_ascii_lowercase() == language_code.to_ascii_lowercase())
+        });
+        match country {
+            None => vec![],
+            Some(country) => self.filter_by_country(&country.code),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Channel, Feed, Feeds, Streams};
+    use crate::domain::{Categories, Channel, Countries, Country, Feeds, Languages, Streams};
     use std::collections::HashMap;
 
     /// Test double for `CatalogRepository` that only supplies the data the
@@ -116,6 +112,9 @@ mod tests {
     struct MockCatalogRepository {
         channels: Channels,
         feeds_by_channel: HashMap<String, Feeds>,
+        languages: Languages,
+        categories: Categories,
+        countries: Countries,
     }
 
     impl MockCatalogRepository {
@@ -123,16 +122,14 @@ mod tests {
             Self {
                 channels,
                 feeds_by_channel: HashMap::new(),
+                languages: vec![],
+                categories: vec![],
+                countries: vec![],
             }
         }
 
-        fn with_feeds(mut self, feeds: Feeds) -> Self {
-            for feed in feeds {
-                self.feeds_by_channel
-                    .entry(feed.channel_id.clone())
-                    .or_default()
-                    .push(feed);
-            }
+        fn with_countries(mut self, countries: Countries) -> Self {
+            self.countries = countries;
             self
         }
     }
@@ -158,22 +155,19 @@ mod tests {
             None
         }
 
-        fn refresh(&self) {}
-    }
-
-    fn channel(id: &str) -> Channel {
-        Channel {
-            id: id.to_string(),
-            name: format!("Channel {}", id),
-            alt_names: vec![],
-            category_ids: vec![],
-            country_code: "US".to_string(),
-            is_nsfw: false,
-            launched: None,
-            closed: None,
-            website: String::new(),
-            network: String::new(),
+        fn get_categories(&self) -> Categories {
+            self.categories.clone()
         }
+
+        fn get_countries(&self) -> Countries {
+            self.countries.clone()
+        }
+
+        fn get_languages(&self) -> Languages {
+            self.languages.clone()
+        }
+
+        fn refresh(&self) {}
     }
 
     fn channel_with(
@@ -197,19 +191,17 @@ mod tests {
         }
     }
 
-    fn feed(id: &str, channel_id: &str, language_codes: Vec<&str>) -> Feed {
-        Feed {
-            id: id.to_string(),
-            channel_id: channel_id.to_string(),
-            name: format!("Feed {}", id),
-            broadcast_codes: vec![],
-            language_codes: language_codes.into_iter().map(|s| s.to_string()).collect(),
-            is_main: false,
-        }
-    }
-
     fn service(repo: MockCatalogRepository) -> IptvCatalogService {
         IptvCatalogService::new(Arc::new(repo))
+    }
+
+    fn country_with(code: &str, name: &str, languages: &[String]) -> Country {
+        Country {
+            code: code.into(),
+            name: name.into(),
+            languages: languages.into(),
+            flag_url: "".to_string(),
+        }
     }
 
     #[test]
@@ -457,69 +449,123 @@ mod tests {
     }
 
     #[test]
-    fn filter_by_language_matches_channel_whose_feed_has_code() {
+    fn filter_by_language_matches_channels_in_country_speaking_language() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1"), channel("ch2")])
-                .with_feeds(vec![feed("feed1", "ch1", vec!["en"])]),
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("us2", "US Two", vec![], vec![], "US"),
+                channel_with("gb1", "GB One", vec![], vec![], "GB"),
+            ])
+            .with_countries(vec![
+                country_with("US", "United States", &["en".into()]),
+                country_with("GB", "United Kingdom", &["de".into()]),
+                country_with("FR", "France", &["fr".into()]),
+            ]),
+        );
+
+        let result = svc.filter_by_language("en");
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, "us1");
+        assert_eq!(result[1].id, "us2");
+    }
+
+    #[test]
+    fn filter_by_language_excludes_channels_in_other_countries() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("gb1", "GB One", vec![], vec![], "GB"),
+            ])
+            .with_countries(vec![
+                country_with("US", "United States", &["en".into()]),
+                country_with("GB", "United Kingdom", &["de".into()]),
+                country_with("FR", "France", &["fr".into()]),
+            ]),
         );
 
         let result = svc.filter_by_language("en");
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "ch1");
+        assert_eq!(result[0].id, "us1");
     }
 
     #[test]
-    fn filter_by_language_excludes_channel_without_feeds() {
+    fn filter_by_language_matches_multi_language_country() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1"), channel("ch2")])
-                .with_feeds(vec![feed("feed1", "ch1", vec!["en"])]),
-        );
-
-        let result = svc.filter_by_language("en");
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "ch1");
-    }
-
-    #[test]
-    fn filter_by_language_matches_multi_language_feed() {
-        let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1")]).with_feeds(vec![feed(
-                "feed1",
-                "ch1",
-                vec!["en", "fr"],
-            )]),
+            MockCatalogRepository::new(vec![
+                channel_with("ca1", "CA One", vec![], vec![], "CA"),
+                channel_with("us1", "US One", vec![], vec![], "US"),
+            ])
+            .with_countries(vec![
+                country_with("CA", "Canada", &["en".into(), "fr".into()]),
+                country_with("US", "United States", &["en".into()]),
+            ]),
         );
 
         let result = svc.filter_by_language("fr");
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "ch1");
+        assert_eq!(result[0].id, "ca1");
     }
 
     #[test]
-    fn filter_by_language_respects_feed_language() {
+    fn filter_by_language_respects_country_language() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1"), channel("ch2")]).with_feeds(vec![
-                feed("feed1", "ch1", vec!["en"]),
-                feed("feed2", "ch2", vec!["de"]),
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("de1", "DE One", vec![], vec![], "DE"),
+            ])
+            .with_countries(vec![
+                country_with("US", "United States", &["en".into()]),
+                country_with("DE", "Germany", &["de".into()]),
+                country_with("FR", "France", &["fr".into()]),
             ]),
         );
 
         let result = svc.filter_by_language("de");
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "ch2");
+        assert_eq!(result[0].id, "de1");
+    }
+
+    #[test]
+    fn filter_by_language_is_case_insensitive() {
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "us1",
+                "US One",
+                vec![],
+                vec![],
+                "US",
+            )])
+            .with_countries(vec![country_with(
+                "US",
+                "United States",
+                &["EN".into()],
+            )]),
+        );
+
+        let result = svc.filter_by_language("en");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "us1");
     }
 
     #[test]
     fn filter_by_language_returns_empty_for_unknown_code() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1")]).with_feeds(vec![feed(
-                "feed1",
-                "ch1",
-                vec!["en"],
+            MockCatalogRepository::new(vec![channel_with(
+                "us1",
+                "US One",
+                vec![],
+                vec![],
+                "US",
+            )])
+            .with_countries(vec![country_with(
+                "US",
+                "United States",
+                &["en".into()],
             )]),
         );
 
@@ -529,10 +575,17 @@ mod tests {
     #[test]
     fn filter_by_language_with_empty_string_returns_empty() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1")]).with_feeds(vec![feed(
-                "feed1",
-                "ch1",
-                vec!["en"],
+            MockCatalogRepository::new(vec![channel_with(
+                "us1",
+                "US One",
+                vec![],
+                vec![],
+                "US",
+            )])
+            .with_countries(vec![country_with(
+                "US",
+                "United States",
+                &["en".into()],
             )]),
         );
 
@@ -542,29 +595,38 @@ mod tests {
     #[test]
     fn filter_by_language_deduplicates_channels() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1")]).with_feeds(vec![
-                feed("feed1", "ch1", vec!["en"]),
-                feed("feed2", "ch1", vec!["en"]),
-            ]),
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("us2", "US Two", vec![], vec![], "US"),
+            ])
+            .with_countries(vec![country_with(
+                "US",
+                "United States",
+                &["en".into()],
+            )]),
         );
 
         let result = svc.filter_by_language("en");
 
-        assert_eq!(result.len(), 1);
+        assert_eq!(result.len(), 2);
     }
 
     #[test]
-    fn filter_by_language_matches_any_feed_of_channel() {
+    fn filter_by_language_matches_any_language_of_country() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel("ch1")]).with_feeds(vec![
-                feed("feed1", "ch1", vec!["en"]),
-                feed("feed2", "ch1", vec!["es"]),
+            MockCatalogRepository::new(vec![
+                channel_with("ca1", "CA One", vec![], vec![], "CA"),
+                channel_with("us1", "US One", vec![], vec![], "US"),
+            ])
+            .with_countries(vec![
+                country_with("CA", "Canada", &["en".into(), "fr".into()]),
+                country_with("US", "United States", &["en".into()]),
             ]),
         );
 
-        let result = svc.filter_by_language("es");
+        let result = svc.filter_by_language("fr");
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "ch1");
+        assert_eq!(result[0].id, "ca1");
     }
 }
