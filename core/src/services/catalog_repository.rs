@@ -219,7 +219,7 @@ struct CatalogSnapShot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Feed, Programs, Stream};
+    use crate::domain::{Category, Country, Feed, Language, Programs, Stream};
     use anyhow::anyhow;
     use anyhow::Result as Res;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -235,6 +235,9 @@ mod tests {
         channels: RwLock<Channels>,
         feeds: RwLock<Feeds>,
         streams: RwLock<Streams>,
+        categories: RwLock<Categories>,
+        countries: RwLock<Countries>,
+        languages: RwLock<Languages>,
     }
 
     impl ChannelDataSource for MockDataSource {
@@ -251,11 +254,11 @@ mod tests {
         }
 
         fn fetch_countries(&self) -> Res<Countries> {
-            Ok(vec![])
+            Ok(self.countries.read().clone())
         }
 
         fn fetch_languages(&self) -> Res<Languages> {
-            Ok(vec![])
+            Ok(self.languages.read().clone())
         }
 
         fn fetch_guides(&self) -> Res<Programs> {
@@ -263,7 +266,7 @@ mod tests {
         }
 
         fn fetch_categories(&self) -> Res<Categories> {
-            Ok(vec![])
+            Ok(self.categories.read().clone())
         }
     }
 
@@ -421,12 +424,39 @@ mod tests {
         }
     }
 
+    fn category(id: &str, name: &str) -> Category {
+        Category {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+        }
+    }
+
+    fn country(code: &str, name: &str, languages: &[&str]) -> Country {
+        Country {
+            code: code.to_string(),
+            name: name.to_string(),
+            languages: languages.iter().map(|s| s.to_string()).collect(),
+            flag_url: String::new(),
+        }
+    }
+
+    fn language(code: &str, name: &str) -> Language {
+        Language {
+            code: code.to_string(),
+            name: name.to_string(),
+        }
+    }
+
     #[test]
     fn refresh_populates_all_catalog_data() {
         let data_source = MockDataSource {
             channels: RwLock::new(vec![channel("ch1"), channel("ch2")]),
             feeds: RwLock::new(vec![feed("feed1", "ch1"), feed("feed2", "ch2")]),
             streams: RwLock::new(vec![stream("ch1", "feed1"), stream("ch2", "feed2")]),
+            categories: RwLock::new(vec![category("news", "News")]),
+            countries: RwLock::new(vec![country("US", "United States", &["en"])]),
+            languages: RwLock::new(vec![language("en", "English")]),
             ..Default::default()
         };
         let repository =
@@ -444,6 +474,15 @@ mod tests {
             repository.get_candidate_streams("ch1", Some("feed1")),
             Some(vec![stream("ch1", "feed1")])
         );
+        assert_eq!(
+            repository.get_categories(),
+            vec![category("news", "News")]
+        );
+        assert_eq!(
+            repository.get_countries(),
+            vec![country("US", "United States", &["en"])]
+        );
+        assert_eq!(repository.get_languages(), vec![language("en", "English")]);
     }
 
     #[test]
@@ -733,5 +772,162 @@ mod tests {
                 .get_candidate_streams("any", None::<&str>)
                 .is_none()
         );
+        assert!(repository.get_categories().is_empty());
+        assert!(repository.get_countries().is_empty());
+        assert!(repository.get_languages().is_empty());
+    }
+
+    #[test]
+    fn refresh_populates_categories() {
+        let data_source = MockDataSource {
+            categories: RwLock::new(vec![category("news", "News"), category("sports", "Sports")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert_eq!(
+            repository.get_categories(),
+            vec![category("news", "News"), category("sports", "Sports")]
+        );
+    }
+
+    #[test]
+    fn refresh_populates_countries() {
+        let data_source = MockDataSource {
+            countries: RwLock::new(vec![country("US", "United States", &["en"])]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert_eq!(
+            repository.get_countries(),
+            vec![country("US", "United States", &["en"])]
+        );
+    }
+
+    #[test]
+    fn refresh_populates_languages() {
+        let data_source = MockDataSource {
+            languages: RwLock::new(vec![language("en", "English"), language("fr", "French")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert_eq!(
+            repository.get_languages(),
+            vec![language("en", "English"), language("fr", "French")]
+        );
+    }
+
+    #[test]
+    fn refresh_replaces_categories_on_second_call() {
+        let data_source = Arc::new(MockDataSource {
+            categories: RwLock::new(vec![category("news", "News")]),
+            ..Default::default()
+        });
+        let repository =
+            IptvCatalogRepository::new(data_source.clone(), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+        assert_eq!(repository.get_categories(), vec![category("news", "News")]);
+
+        *data_source.categories.write() = vec![category("sports", "Sports")];
+
+        repository.refresh();
+
+        assert_eq!(repository.get_categories(), vec![category("sports", "Sports")]);
+    }
+
+    #[test]
+    fn refresh_replaces_countries_on_second_call() {
+        let data_source = Arc::new(MockDataSource {
+            countries: RwLock::new(vec![country("US", "United States", &["en"])]),
+            ..Default::default()
+        });
+        let repository =
+            IptvCatalogRepository::new(data_source.clone(), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+        assert_eq!(
+            repository.get_countries(),
+            vec![country("US", "United States", &["en"])]
+        );
+
+        *data_source.countries.write() = vec![country("DE", "Germany", &["de"])];
+
+        repository.refresh();
+
+        assert_eq!(
+            repository.get_countries(),
+            vec![country("DE", "Germany", &["de"])]
+        );
+    }
+
+    #[test]
+    fn refresh_replaces_languages_on_second_call() {
+        let data_source = Arc::new(MockDataSource {
+            languages: RwLock::new(vec![language("en", "English")]),
+            ..Default::default()
+        });
+        let repository =
+            IptvCatalogRepository::new(data_source.clone(), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+        assert_eq!(repository.get_languages(), vec![language("en", "English")]);
+
+        *data_source.languages.write() = vec![language("fr", "French")];
+
+        repository.refresh();
+
+        assert_eq!(repository.get_languages(), vec![language("fr", "French")]);
+    }
+
+    #[test]
+    fn get_categories_returns_empty_before_refresh() {
+        let repository = IptvCatalogRepository::new(
+            Arc::new(MockDataSource {
+                categories: RwLock::new(vec![category("news", "News")]),
+                ..Default::default()
+            }),
+            Arc::new(MockCacheStore::default()),
+        );
+
+        // No refresh has happened yet, so nothing is stored.
+        assert!(repository.get_categories().is_empty());
+    }
+
+    #[test]
+    fn get_countries_returns_empty_before_refresh() {
+        let repository = IptvCatalogRepository::new(
+            Arc::new(MockDataSource {
+                countries: RwLock::new(vec![country("US", "United States", &["en"])]),
+                ..Default::default()
+            }),
+            Arc::new(MockCacheStore::default()),
+        );
+
+        assert!(repository.get_countries().is_empty());
+    }
+
+    #[test]
+    fn get_languages_returns_empty_before_refresh() {
+        let repository = IptvCatalogRepository::new(
+            Arc::new(MockDataSource {
+                languages: RwLock::new(vec![language("en", "English")]),
+                ..Default::default()
+            }),
+            Arc::new(MockCacheStore::default()),
+        );
+
+        assert!(repository.get_languages().is_empty());
     }
 }
