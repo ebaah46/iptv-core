@@ -1,5 +1,6 @@
 use redb::Database;
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use std::sync::Arc;
 */
 pub trait Store: Debug + Send + Sync {
     // get an item from the cache and deserialize it into the appropriate type
-    fn get_item<'a, T: Deserialize<'a>>(&self, key: &str) -> Option<T>;
+    fn get_item<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
 
     // save an item into the cache but serialize it before
     fn save_item<T: Serialize>(&self, key: &str, value: T);
@@ -39,7 +40,7 @@ impl FileStore {
 }
 
 impl Store for FileStore {
-    fn get_item<'a, T: Deserialize<'a>>(&self, key: &str) -> Option<T> {
+    fn get_item<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
         todo!()
     }
 
