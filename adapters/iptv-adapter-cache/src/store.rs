@@ -1,6 +1,8 @@
-use redb::Database;
+use anyhow::Result as Res;
+use log::info;
+use redb::{Database, ReadableDatabase};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +17,7 @@ pub trait Store: Debug + Send + Sync {
     fn get_item<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
 
     // save an item into the cache but serialize it before
-    fn save_item<T: Serialize>(&self, key: &str, value: T);
+    fn save_item<T: Serialize>(&self, key: &str, value: T) -> Res<()>;
 
     // evict an item from the cache whether based on its ttl or not
     fn evict(&self, key: &str);
@@ -31,6 +33,8 @@ pub struct FileStore {
     pub path: PathBuf,
     db: Arc<Database>,
 }
+
+// TODO: This table name could be made configurable
 const TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("catalog_cache");
 impl FileStore {
     pub fn new(path: PathBuf, ttl_days: u8) -> Self {
@@ -41,16 +45,62 @@ impl FileStore {
 
 impl Store for FileStore {
     fn get_item<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
-        todo!()
+        let read_txn = self.db.begin_read().ok()?;
+        let table = read_txn.open_table(TABLE).ok()?;
+        let raw = table.get(key).ok()?;
+        let entry: CacheEntry = postcard::from_bytes(raw?.value()).ok()?;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Failed to retrieve current time")
+            .as_secs() as i64;
+
+        let ttl_seconds = (self.ttl_days as i64) * (24 * 60 * 60); // convert days to seconds
+        if (now - entry.inserted_at) >= ttl_seconds {
+            drop(read_txn);
+            self.evict(key);
+            return None;
+        }
+        let value: T = postcard::from_bytes(&entry.data).ok()?;
+        Some(value)
     }
 
-    fn save_item<T: Serialize>(&self, key: &str, value: T) {
-        todo!()
+    fn save_item<T: Serialize>(&self, key: &str, value: T) -> Res<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        let cache_item = CacheEntry {
+            inserted_at: now,
+            data: postcard::to_stdvec(&value)?,
+        };
+        let data = postcard::to_stdvec(&cache_item)?;
+        let write_guard = self.db.begin_write()?;
+        {
+            let mut table = write_guard.open_table(TABLE)?;
+            table.insert(key, data.as_slice())?;
+        }
+        write_guard.commit()?;
+        Ok(())
     }
 
     fn evict(&self, key: &str) {
-        todo!()
+        let write_guard = self.db.begin_write().ok();
+        if let Some(writer) = write_guard {
+            if let Ok(mut table) = writer.open_table(TABLE) {
+                let _ = table.remove(key);
+            }
+            if let Err(e) = writer.commit() {
+                info!("FileStore - evict - failed to remove cache item:{}", key);
+            }
+        }
     }
+}
+
+// Internal wrapper item
+#[derive(Serialize, Deserialize)]
+struct CacheEntry {
+    inserted_at: i64,
+    data: Vec<u8>,
 }
 
 #[cfg(test)]
