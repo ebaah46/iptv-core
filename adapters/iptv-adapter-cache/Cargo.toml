@@ -9,3 +9,4 @@ serde.workspace = true
 postcard.workspace = true
 redb.workspace = true
 anyhow.workspace = true
+log = "0.4.33"
