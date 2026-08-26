@@ -1,12 +1,13 @@
 use crate::domain::Streams;
 use crate::services::CatalogRepository;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 /**
 * This trait defines a way to resolve streams in the library.
 * Streams may be resolved based on various algorithms.
 */
-pub trait StreamResolver {
+pub trait StreamResolver: Debug {
     fn get_candidate_streams(&self, channel_id: &str) -> Streams;
 }
 

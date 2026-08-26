@@ -1,5 +1,6 @@
 use crate::domain::stream::Stream;
 use anyhow::Result as Res;
+use std::fmt::Debug;
 
 /**
 * Describes the way in which the library receives commands
@@ -8,7 +9,7 @@ use anyhow::Result as Res;
 * whole business logic of streaming is handled by the concrete type
 * that implements this trait.
 */
-pub trait PlayerController {
+pub trait PlayerController: Debug {
     // Loads a video for streaming to begin.
     fn load(&self, stream: Stream) -> Res<()>;
 
