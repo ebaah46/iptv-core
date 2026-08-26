@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "core",
     "adapters/*"
-]
+, "player"]
 
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
