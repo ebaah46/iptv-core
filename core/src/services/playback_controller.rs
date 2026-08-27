@@ -73,40 +73,217 @@ impl IpTvPlaybackController {
             candidates: RwLock::new(vec![]),
             attempted_streams: Default::default(),
             current_state: Default::default(),
-            last_error: None,
+            last_error: RwLock::new(None),
         }
+    }
+
+    fn try_next_candidate(&self) -> Res<()> {
+        // Pop the first candidate from the queue.
+        let url = {
+            let mut guard = self.candidates.write();
+            if guard.is_empty() {
+                return Err(anyhow::anyhow!("no more candidates"));
+            }
+            guard.remove(0)
+        };
+
+        // Record that we're attempting this URL.
+        {
+            let mut guard = self.attempted_streams.write();
+            guard.push(url.clone());
+        }
+
+        // Load the stream through the player.
+        let stream = Stream {
+            channel_id: String::new(),
+            feed_id: String::new(),
+            url: url,
+            quality: String::new(),
+            referrer: String::new(),
+            title: String::new(),
+            user_agent: String::new(),
+        };
+        self.player.load(stream)?;
+        self.player.play()?;
+
+        Ok(())
     }
 }
 
 impl PlaybackController for IpTvPlaybackController {
     fn play(&self, channel_id: &str) {
-        todo!()
+        // Resolve candidate streams.
+        let streams = self.stream_resolver.get_candidate_streams(channel_id);
+        if streams.is_empty() {
+            *self.current_state.write() = PlaybackState::Failed {
+                channel_id: channel_id.to_string(),
+                error: "no streams found for channel".to_string(),
+            };
+            *self.last_error.write() = Some("no streams found for channel".to_string());
+            return;
+        }
+
+        let urls: Vec<String> = streams.into_iter().map(|s| s.url).collect();
+        *self.candidates.write() = urls.clone();
+
+        *self.current_state.write() = PlaybackState::Loading {
+            channel_id: channel_id.to_string(),
+            attempt: 1,
+        };
+
+        // Try candidates until one loads successfully.
+        while let Err(e) = self.try_next_candidate() {
+            // No more candidates to try.
+            if self.candidates.read().is_empty() {
+                *self.current_state.write() = PlaybackState::Failed {
+                    channel_id: channel_id.to_string(),
+                    error: e.to_string(),
+                };
+                *self.last_error.write() = Some(e.to_string());
+                return;
+            }
+            // Increment attempt and try the next candidate.
+            let next_attempt = {
+                let state = self.current_state.read().clone();
+                match state {
+                    PlaybackState::Loading { attempt, .. }
+                    | PlaybackState::Retrying { attempt, .. } => attempt + 1,
+                    _ => 1,
+                }
+            };
+            *self.current_state.write() = PlaybackState::Loading {
+                channel_id: channel_id.to_string(),
+                attempt: next_attempt,
+            };
+        }
     }
 
     fn pause(&self) {
-        todo!()
+        let _ = self.player.pause();
     }
 
     fn stop(&self) {
-        todo!()
+        let _ = self.player.stop();
+        *self.current_state.write() = PlaybackState::Stopped;
     }
 
     fn seek(&self, seconds: f32) {
-        todo!()
+        let _ = self.player.seek_position(seconds as u32);
     }
 }
 
 impl PlaybackListener for IpTvPlaybackController {
     fn on_playback_started(&self) -> Res<()> {
-        todo!()
+        let state = self.current_state.read().clone();
+        match state {
+            PlaybackState::Loading {
+                channel_id,
+                attempt: _,
+            } => {
+                // Get the most recently attempted URL to use as stream_id.
+                let stream_id = self
+                    .attempted_streams
+                    .read()
+                    .last()
+                    .cloned()
+                    .unwrap_or_default();
+                *self.current_state.write() = PlaybackState::Playing {
+                    channel_id,
+                    stream_id,
+                };
+                Ok(())
+            }
+            PlaybackState::Retrying { .. } => {
+                // We succeeded after a retry — transition to Playing.
+                let channel_id = String::new();
+                let stream_id = self
+                    .attempted_streams
+                    .read()
+                    .last()
+                    .cloned()
+                    .unwrap_or_default();
+                *self.current_state.write() = PlaybackState::Playing {
+                    channel_id,
+                    stream_id,
+                };
+                // Clear last_error since playback succeeded.
+                *self.last_error.write() = None;
+                Ok(())
+            }
+            _ => {
+                // Unexpected state — ignore or log.
+                Ok(())
+            }
+        }
     }
 
-    fn on_playback_failed(&self) -> Res<()> {
-        todo!()
+    fn on_playback_failed(&self, error: &str) -> Res<()> {
+        // Store the error.
+        *self.last_error.write() = Some(error.to_string());
+
+        let state = self.current_state.read().clone();
+        match state {
+            PlaybackState::Loading {
+                channel_id,
+                attempt,
+            }
+            | PlaybackState::Retrying {
+                channel_id,
+                attempt,
+                ..
+            } => {
+                // Try the next candidate stream.
+                match self.try_next_candidate() {
+                    Ok(()) => {
+                        *self.current_state.write() = PlaybackState::Retrying {
+                            channel_id,
+                            attempt: attempt + 1,
+                            last_error: error.to_string(),
+                        };
+                        Ok(())
+                    }
+                    Err(_) => {
+                        // No more candidates — fail permanently.
+                        *self.current_state.write() = PlaybackState::Failed {
+                            channel_id,
+                            error: error.to_string(),
+                        };
+                        Ok(())
+                    }
+                }
+            }
+            PlaybackState::Playing { channel_id, .. } => {
+                // Playback failed mid-stream — try next candidate if available.
+                match self.try_next_candidate() {
+                    Ok(()) => {
+                        *self.current_state.write() = PlaybackState::Retrying {
+                            channel_id,
+                            attempt: 1,
+                            last_error: error.to_string(),
+                        };
+                        Ok(())
+                    }
+                    Err(_) => {
+                        *self.current_state.write() = PlaybackState::Failed {
+                            channel_id,
+                            error: error.to_string(),
+                        };
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                // Idle or Stopped state — just record the error.
+                Ok(())
+            }
+        }
     }
 
     fn on_playback_stopped(&self) -> Res<()> {
-        todo!()
+        *self.current_state.write() = PlaybackState::Stopped;
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
