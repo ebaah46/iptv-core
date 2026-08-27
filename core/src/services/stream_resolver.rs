@@ -7,7 +7,7 @@ use std::sync::Arc;
 * This trait defines a way to resolve streams in the library.
 * Streams may be resolved based on various algorithms.
 */
-pub trait StreamResolver: Debug {
+pub trait StreamResolver: Debug + Send + Sync {
     fn get_candidate_streams(&self, channel_id: &str) -> Streams;
 }
 

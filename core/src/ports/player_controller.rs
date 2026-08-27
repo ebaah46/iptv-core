@@ -9,7 +9,7 @@ use std::fmt::Debug;
 * whole business logic of streaming is handled by the concrete type
 * that implements this trait.
 */
-pub trait PlayerController: Debug {
+pub trait PlayerController: Debug + Send + Sync {
     // Loads a video for streaming to begin.
     fn load(&self, stream: Stream) -> Res<()>;
 
@@ -39,10 +39,7 @@ pub trait PlaybackListener {
     fn on_playback_started(&self) -> Res<()>;
 
     // Failure occurred while streaming video
-    // I expect there to be some kind of error here
-    // but I do not know those details so there will be a
-    // TODO: add error parameter to trait
-    fn on_playback_failed(&self) -> Res<()>;
+    fn on_playback_failed(&self, error: &str) -> Res<()>;
 
     // Video streaming ended
     fn on_playback_stopped(&self) -> Res<()>;
