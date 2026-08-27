@@ -16,7 +16,7 @@ pub trait PlaybackController {
 
     fn stop(&self);
 
-    fn seek(&self, seconds: f32);
+    fn seek(&self, seconds: u32);
 }
 
 /**
@@ -167,8 +167,8 @@ impl PlaybackController for IpTvPlaybackController {
         *self.current_state.write() = PlaybackState::Stopped;
     }
 
-    fn seek(&self, seconds: f32) {
-        let _ = self.player.seek_position(seconds as u32);
+    fn seek(&self, seconds: u32) {
+        let _ = self.player.seek_position(seconds);
     }
 }
 
