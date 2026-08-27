@@ -1,10 +1,5 @@
 pub mod domain;
 pub mod ports;
 
+mod facade;
 pub mod services;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {}
-}
