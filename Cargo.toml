@@ -5,6 +5,14 @@ members = [
     "adapters/*"
 ]
 
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+authors = ["BEKs <ebaah72@gmail.com>"]
+license = "GPL-3"
+repository = "https://github.com/ebaah46/iptv-core"
+
+
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 chrono = { version = "0.4.45", features = ["serde"] }
@@ -13,3 +21,9 @@ log = "0.4.33"
 parking_lot = { version = "0.12.5", features = ["deadlock_detection"] }
 redb = "4.1.0"
 postcard = { version = "1.1.3", features = ["alloc", "use-std"] }
+
+
+# internal workspace crates
+adapter-api = { path = "adapters/iptv-adapter-api" }
+adapter-cache = { path = "adapters/iptv-adapter-cache" }
+core = { path = "core" }

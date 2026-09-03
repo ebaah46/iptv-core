@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-core = { path = "../../core" }
+core.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 chrono.workspace = true
