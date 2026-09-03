@@ -1,4 +1,4 @@
-use crate::domain::Channels;
+use crate::domain::{Channel, Channels};
 use crate::services::CatalogRepository;
 use std::sync::Arc;
 
@@ -17,6 +17,7 @@ pub trait CatalogService {
 
     fn filter_by_language(&self, language_code: &str) -> Channels;
 
+    fn get_all(&self) -> Channels;
     // Other filtering APIs will be provided as we go. But for not, this
     // is what is available
 }
@@ -96,6 +97,10 @@ impl CatalogService for IptvCatalogService {
             None => vec![],
             Some(country) => self.filter_by_country(&country.code),
         }
+    }
+
+    fn get_all(&self) -> Channels {
+        self.inner.get_channels()
     }
 }
 
@@ -202,6 +207,20 @@ mod tests {
             languages: languages.into(),
             flag_url: "".to_string(),
         }
+    }
+
+    #[test]
+    fn get_all_channels() {
+        let svc = service(MockCatalogRepository::new(vec![
+            channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
+            channel_with("cnn", "CNN", vec![], vec![], "US"),
+        ]));
+
+        let result = svc.get_all();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, "bbc1");
+        assert_eq!(result[1].id, "cnn");
     }
 
     #[test]
@@ -532,18 +551,8 @@ mod tests {
     #[test]
     fn filter_by_language_is_case_insensitive() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel_with(
-                "us1",
-                "US One",
-                vec![],
-                vec![],
-                "US",
-            )])
-            .with_countries(vec![country_with(
-                "US",
-                "United States",
-                &["EN".into()],
-            )]),
+            MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
+                .with_countries(vec![country_with("US", "United States", &["EN".into()])]),
         );
 
         let result = svc.filter_by_language("en");
@@ -555,18 +564,8 @@ mod tests {
     #[test]
     fn filter_by_language_returns_empty_for_unknown_code() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel_with(
-                "us1",
-                "US One",
-                vec![],
-                vec![],
-                "US",
-            )])
-            .with_countries(vec![country_with(
-                "US",
-                "United States",
-                &["en".into()],
-            )]),
+            MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
+                .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
 
         assert!(svc.filter_by_language("xx").is_empty());
@@ -575,18 +574,8 @@ mod tests {
     #[test]
     fn filter_by_language_with_empty_string_returns_empty() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel_with(
-                "us1",
-                "US One",
-                vec![],
-                vec![],
-                "US",
-            )])
-            .with_countries(vec![country_with(
-                "US",
-                "United States",
-                &["en".into()],
-            )]),
+            MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
+                .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
 
         assert!(svc.filter_by_language("").is_empty());
@@ -599,11 +588,7 @@ mod tests {
                 channel_with("us1", "US One", vec![], vec![], "US"),
                 channel_with("us2", "US Two", vec![], vec![], "US"),
             ])
-            .with_countries(vec![country_with(
-                "US",
-                "United States",
-                &["en".into()],
-            )]),
+            .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
 
         let result = svc.filter_by_language("en");
