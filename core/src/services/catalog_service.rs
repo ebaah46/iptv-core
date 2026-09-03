@@ -1,4 +1,4 @@
-use crate::domain::{Channel, Channels};
+use crate::domain::{Categories, Channel, Channels, Countries, Languages};
 use crate::services::CatalogRepository;
 use std::sync::Arc;
 
@@ -18,6 +18,13 @@ pub trait CatalogService {
     fn filter_by_language(&self, language_code: &str) -> Channels;
 
     fn get_all(&self) -> Channels;
+
+    fn get_categories(&self) -> Categories;
+
+    fn get_countries(&self) -> Countries;
+
+    fn get_languages(&self) -> Languages;
+
     // Other filtering APIs will be provided as we go. But for not, this
     // is what is available
 }
@@ -101,6 +108,18 @@ impl CatalogService for IptvCatalogService {
 
     fn get_all(&self) -> Channels {
         self.inner.get_channels()
+    }
+
+    fn get_categories(&self) -> Categories {
+        self.inner.get_categories()
+    }
+
+    fn get_countries(&self) -> Countries {
+        self.inner.get_countries()
+    }
+
+    fn get_languages(&self) -> Languages {
+        self.inner.get_languages()
     }
 }
 
