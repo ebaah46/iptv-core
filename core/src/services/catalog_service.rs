@@ -35,7 +35,7 @@ pub struct IptvCatalogService {
 }
 
 impl IptvCatalogService {
-    fn new(registry: Arc<dyn CatalogRepository>) -> Self {
+    pub fn new(registry: Arc<dyn CatalogRepository>) -> Self {
         Self { inner: registry }
     }
 }
