@@ -17,12 +17,12 @@ pub trait StreamResolver: Debug + Send + Sync {
 *in no particular order.
 */
 #[derive(Debug)]
-pub(crate) struct IptvStreamResolver {
+pub struct IptvStreamResolver {
     catalog: Arc<dyn CatalogRepository>,
 }
 
 impl IptvStreamResolver {
-    pub(crate) fn new(catalog: Arc<dyn CatalogRepository>) -> Self {
+    pub fn new(catalog: Arc<dyn CatalogRepository>) -> Self {
         Self { catalog }
     }
 }
