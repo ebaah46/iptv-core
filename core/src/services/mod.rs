@@ -6,4 +6,4 @@ pub(crate) mod stream_resolver;
 pub use catalog_repository::CatalogRepository;
 pub use catalog_service::CatalogService;
 pub use playback_controller::{IpTvPlaybackController, PlaybackController};
-pub(crate) use stream_resolver::StreamResolver;
+pub use stream_resolver::StreamResolver;
