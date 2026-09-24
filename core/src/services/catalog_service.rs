@@ -25,6 +25,7 @@ pub trait CatalogService {
 
     fn get_languages(&self) -> Languages;
 
+    fn refresh(&self);
     // Other filtering APIs will be provided as we go. But for not, this
     // is what is available
 }
@@ -121,6 +122,10 @@ impl CatalogService for IptvCatalogService {
     fn get_languages(&self) -> Languages {
         self.inner.get_languages()
     }
+
+    fn refresh(&self) {
+        self.inner.refresh();
+    }
 }
 
 #[cfg(test)]
@@ -128,17 +133,32 @@ mod tests {
     use super::*;
     use crate::domain::{Categories, Channel, Countries, Country, Feeds, Languages, Streams};
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Test double for `CatalogRepository` that only supplies the data the
     /// service reads (channels and feeds). The remaining repository methods
     /// are stubbed out because the service under test never calls them.
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     struct MockCatalogRepository {
         channels: Channels,
         feeds_by_channel: HashMap<String, Feeds>,
         languages: Languages,
         categories: Categories,
         countries: Countries,
+        refresh_count: AtomicUsize,
+    }
+
+    impl Default for MockCatalogRepository {
+        fn default() -> Self {
+            Self {
+                channels: vec![],
+                feeds_by_channel: HashMap::new(),
+                languages: vec![],
+                categories: vec![],
+                countries: vec![],
+                refresh_count: AtomicUsize::new(0),
+            }
+        }
     }
 
     impl MockCatalogRepository {
@@ -149,6 +169,7 @@ mod tests {
                 languages: vec![],
                 categories: vec![],
                 countries: vec![],
+                refresh_count: AtomicUsize::new(0),
             }
         }
 
@@ -191,7 +212,9 @@ mod tests {
             self.languages.clone()
         }
 
-        fn refresh(&self) {}
+        fn refresh(&self) {
+            self.refresh_count.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     fn channel_with(
@@ -229,11 +252,24 @@ mod tests {
     }
 
     #[test]
+    fn refresh_delegates_to_repository() {
+        let repo = Arc::new(MockCatalogRepository::new(vec![]));
+        let svc = IptvCatalogService::new(repo.clone());
+        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 0);
+        svc.refresh();
+        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 1);
+        svc.refresh();
+        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
     fn get_all_channels() {
         let svc = service(MockCatalogRepository::new(vec![
             channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
             channel_with("cnn", "CNN", vec![], vec![], "US"),
         ]));
+
+        svc.refresh();
 
         let result = svc.get_all();
 
@@ -501,6 +537,8 @@ mod tests {
             ]),
         );
 
+        svc.refresh();
+
         let result = svc.filter_by_language("en");
 
         assert_eq!(result.len(), 2);
@@ -522,6 +560,8 @@ mod tests {
             ]),
         );
 
+        svc.refresh();
+
         let result = svc.filter_by_language("en");
 
         assert_eq!(result.len(), 1);
@@ -540,6 +580,8 @@ mod tests {
                 country_with("US", "United States", &["en".into()]),
             ]),
         );
+
+        svc.refresh();
 
         let result = svc.filter_by_language("fr");
 
@@ -561,6 +603,8 @@ mod tests {
             ]),
         );
 
+        svc.refresh();
+
         let result = svc.filter_by_language("de");
 
         assert_eq!(result.len(), 1);
@@ -573,6 +617,8 @@ mod tests {
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["EN".into()])]),
         );
+
+        svc.refresh();
 
         let result = svc.filter_by_language("en");
 
@@ -587,6 +633,8 @@ mod tests {
                 .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
 
+        svc.refresh();
+
         assert!(svc.filter_by_language("xx").is_empty());
     }
 
@@ -596,6 +644,8 @@ mod tests {
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
+
+        svc.refresh();
 
         assert!(svc.filter_by_language("").is_empty());
     }
@@ -609,6 +659,8 @@ mod tests {
             ])
             .with_countries(vec![country_with("US", "United States", &["en".into()])]),
         );
+
+        svc.refresh();
 
         let result = svc.filter_by_language("en");
 
@@ -627,6 +679,8 @@ mod tests {
                 country_with("US", "United States", &["en".into()]),
             ]),
         );
+
+        svc.refresh();
 
         let result = svc.filter_by_language("fr");
 

@@ -15,6 +15,8 @@ pub trait CoreFacade {
     fn stop(&self);
 
     fn seek(&self, position: u32);
+
+    fn refresh(&self);
 }
 pub struct IptvFacade {
     pub catalog_service: Arc<dyn CatalogService>,
@@ -48,5 +50,9 @@ impl CoreFacade for IptvFacade {
 
     fn seek(&self, position: u32) {
         self.playback_controller.seek(position);
+    }
+
+    fn refresh(&self) {
+        self.catalog_service.refresh();
     }
 }
