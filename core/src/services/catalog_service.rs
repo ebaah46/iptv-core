@@ -6,7 +6,7 @@ use std::sync::Arc;
 * This trait provides the actual business logic that could be implemented in
 * the IPTV catalog library. It handles core use cases like searching, filtering, etc.
 */
-pub trait CatalogService {
+pub trait CatalogService: Send + Sync {
     /// Search for a given channel. The search query should match to either
     /// the name of the channel or the alt_names
     fn search(&self, query: &str) -> Channels;
