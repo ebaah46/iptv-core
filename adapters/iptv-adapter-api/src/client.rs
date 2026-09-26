@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result as Res};
-use log::info;
+use log::{error, info};
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::Method;
 use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
@@ -95,7 +95,8 @@ impl HttpClient {
         P: Into<String>,
         F: FnMut(T) -> Option<Target>,
     {
-        let mut req = self.build_request("GET", &path.into());
+        let url = path.into();
+        let mut req = self.build_request("GET", &url);
         if let Some(q) = query {
             req = req.query(q);
         }
@@ -113,16 +114,16 @@ impl HttpClient {
         let mut transformed_collection = vec![];
 
         let visitor: StreamArrayVisitor<T, _> = StreamArrayVisitor::new(|data_dto: T| {
-            println!("Starting mapper with callback dto:{:?}", data_dto);
+            info!("Starting mapper with callback dto:{:?}", data_dto);
             if let Some(mapped) = callback(data_dto) {
                 transformed_collection.push(mapped);
             }
         });
 
         if let Err(e) = deserializer.deserialize_seq(visitor) {
-            println!(
-                "HttpClient - get_stream - failed to deserialize sequence: {}",
-                e
+            error!(
+                "HttpClient - get_stream - failed to deserialize sequence: {} for path: {}",
+                e, &url
             );
         }
         Ok(transformed_collection)
