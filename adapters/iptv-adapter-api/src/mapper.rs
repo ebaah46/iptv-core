@@ -40,7 +40,7 @@ pub fn map_feed_dto(dto: FeedDTO) -> Option<Feed> {
         id: Some(dto.id).filter(|id| !id.is_empty())?,
         channel_id: Some(dto.channel).filter(|id| !id.is_empty())?,
         name: Some(dto.name).filter(|id| !id.is_empty())?,
-        broadcast_codes: dto.broadcast_areas,
+        broadcast_codes: dto.broadcast_area,
         language_codes: dto.languages,
         is_main: false,
     })

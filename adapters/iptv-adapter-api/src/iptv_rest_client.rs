@@ -174,7 +174,7 @@ mod tests {
                 "id": "feed-1",
                 "channel": "channel-1",
                 "name": "France 3 Paris IDF",
-                "broadcast_areas": ["ParisIleDeFrance"],
+                "broadcast_area": ["ParisIleDeFrance"],
                 "languages": ["fr"],
                 "alt_names": ["channel1"],
                 "is_main": false,

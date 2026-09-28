@@ -30,7 +30,7 @@ pub struct FeedDTO {
     pub name: String,
     pub alt_names: Vec<String>,
     pub is_main: bool,
-    pub broadcast_areas: Vec<String>,
+    pub broadcast_area: Vec<String>,
     pub timezones: Vec<String>,
     pub languages: Vec<String>,
     pub country: String,
