@@ -179,7 +179,6 @@ mod tests {
                 "alt_names": ["channel1"],
                 "is_main": false,
                 "timezones": ["Europe/Paris"],
-                "country": "fra",
                 "format": "576i"
             }]),
         );

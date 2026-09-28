@@ -33,7 +33,6 @@ pub struct FeedDTO {
     pub broadcast_area: Vec<String>,
     pub timezones: Vec<String>,
     pub languages: Vec<String>,
-    pub country: String,
     pub format: String,
 }
 
