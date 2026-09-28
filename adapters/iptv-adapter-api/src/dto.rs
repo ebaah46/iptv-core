@@ -20,7 +20,7 @@ pub struct ChannelDTO {
     pub launched: Option<String>,
     pub closed: Option<String>,
     pub replaced_by: Option<String>,
-    pub website: String,
+    pub website: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

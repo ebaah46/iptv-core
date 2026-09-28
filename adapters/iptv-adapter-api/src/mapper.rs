@@ -18,7 +18,7 @@ pub fn map_channel_dto(dto: ChannelDTO) -> Option<Channel> {
         is_nsfw: dto.is_nsfw,
         launched: dto.launched.and_then(|d| NaiveDate::from_str(&d).ok()),
         closed: dto.closed.and_then(|d| NaiveDate::from_str(&d).ok()),
-        website: dto.website,
+        website: dto.website.unwrap_or_default(),
         network: dto.network.unwrap_or_default(),
     })
 }
