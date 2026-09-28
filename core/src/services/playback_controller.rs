@@ -2,6 +2,7 @@ use crate::domain::Stream;
 use crate::ports::{PlaybackListener, PlayerController};
 use crate::services::StreamResolver;
 use anyhow::Result as Res;
+use log::{info, warn};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -92,7 +93,7 @@ impl IpTvPlaybackController {
             let mut guard = self.attempted_streams.write();
             guard.push(url.clone());
         }
-
+        info!("Attempted candidate: {}", &url);
         // Load the stream through the player.
         let stream = Stream {
             channel_id: String::new(),
@@ -104,7 +105,9 @@ impl IpTvPlaybackController {
             user_agent: String::new(),
         };
         self.player.load(stream)?;
+        info!("Candidate loaded");
         self.player.play()?;
+        info!("Candidate playing");
 
         Ok(())
     }
@@ -112,6 +115,7 @@ impl IpTvPlaybackController {
 
 impl PlaybackController for IpTvPlaybackController {
     fn play(&self, channel_id: &str) {
+        info!("Received Playing Request for {}", channel_id);
         // Resolve candidate streams.
         let streams = self.stream_resolver.get_candidate_streams(channel_id);
         if streams.is_empty() {
@@ -120,10 +124,12 @@ impl PlaybackController for IpTvPlaybackController {
                 error: "no streams found for channel".to_string(),
             };
             *self.last_error.write() = Some("no streams found for channel".to_string());
+            warn!("No streams found for channel");
             return;
         }
 
         let urls: Vec<String> = streams.into_iter().map(|s| s.url).collect();
+        info!("Links for stream are {}", urls.len());
         *self.candidates.write() = urls.clone();
 
         *self.current_state.write() = PlaybackState::Loading {
