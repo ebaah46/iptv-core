@@ -34,7 +34,7 @@ pub trait PlayerController: Debug + Send + Sync {
 * tell if video playback is ongoing successfully or not.
 */
 
-pub trait PlaybackListener {
+pub trait PlaybackListener: Send + Sync + Debug {
     // Video streaming has started notification
     fn on_playback_started(&self) -> Res<()>;
 
