@@ -9,6 +9,8 @@ use std::sync::Arc;
 */
 pub trait StreamResolver: Debug + Send + Sync {
     fn get_candidate_streams(&self, channel_id: &str) -> Streams;
+
+    fn channel_has_feeds(&self, channel_id: &str) -> bool;
 }
 
 /**
@@ -52,6 +54,12 @@ impl StreamResolver for IptvStreamResolver {
         }
 
         all_streams
+    }
+
+    fn channel_has_feeds(&self, channel_id: &str) -> bool {
+        self.catalog
+            .get_feeds_by_channel(channel_id)
+            .map_or(false, |feeds| !feeds.is_empty())
     }
 }
 
@@ -134,6 +142,48 @@ mod tests {
             language_codes: vec![],
             is_main: false,
         }
+    }
+
+    #[test]
+    fn channel_has_feeds_returns_true_when_feeds_exist() {
+        let catalog = MockCatalogRepository {
+            feeds: RwLock::new(vec![(
+                "ch1".to_string(),
+                vec![feed("f1", "ch1")],
+            )]),
+            ..Default::default()
+        };
+        let resolver = IptvStreamResolver::new(Arc::new(catalog));
+
+        assert!(resolver.channel_has_feeds("ch1"));
+    }
+
+    #[test]
+    fn channel_has_feeds_returns_false_when_channel_has_empty_feeds() {
+        let catalog = MockCatalogRepository {
+            feeds: RwLock::new(vec![(
+                "ch1".to_string(),
+                vec![],
+            )]),
+            ..Default::default()
+        };
+        let resolver = IptvStreamResolver::new(Arc::new(catalog));
+
+        assert!(!resolver.channel_has_feeds("ch1"));
+    }
+
+    #[test]
+    fn channel_has_feeds_returns_false_for_unknown_channel() {
+        let catalog = MockCatalogRepository {
+            feeds: RwLock::new(vec![(
+                "ch1".to_string(),
+                vec![feed("f1", "ch1")],
+            )]),
+            ..Default::default()
+        };
+        let resolver = IptvStreamResolver::new(Arc::new(catalog));
+
+        assert!(!resolver.channel_has_feeds("unknown"));
     }
 
     #[test]

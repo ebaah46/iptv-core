@@ -317,6 +317,7 @@ mod tests {
         pub StreamRslv {}
         impl StreamResolver for StreamRslv {
             fn get_candidate_streams(&self, channel_id: &str) -> Streams;
+            fn channel_has_feeds(&self, channel_id: &str) -> bool;
         }
         impl std::fmt::Debug for StreamRslv {
             fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result {
