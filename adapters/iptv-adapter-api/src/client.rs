@@ -114,7 +114,6 @@ impl HttpClient {
         let mut transformed_collection = vec![];
 
         let visitor: StreamArrayVisitor<T, _> = StreamArrayVisitor::new(|data_dto: T| {
-            info!("Starting mapper with callback dto:{:?}", data_dto);
             if let Some(mapped) = callback(data_dto) {
                 transformed_collection.push(mapped);
             }
