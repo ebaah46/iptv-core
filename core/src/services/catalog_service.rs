@@ -39,6 +39,20 @@ impl IptvCatalogService {
     pub fn new(registry: Arc<dyn CatalogRepository>) -> Self {
         Self { inner: registry }
     }
+
+    fn has_feeds(&self, channel: &str) -> bool {
+        self.inner
+            .get_feeds_by_channel(channel)
+            .map(|f| !f.is_empty())
+            .unwrap_or_default()
+    }
+
+    fn filter_channels_with_feeds(&self, channels: Channels) -> Channels {
+        channels
+            .into_iter()
+            .filter(|c| self.has_feeds(&c.id))
+            .collect()
+    }
 }
 
 impl CatalogService for IptvCatalogService {
@@ -47,7 +61,8 @@ impl CatalogService for IptvCatalogService {
             return vec![];
         }
         let query = query.to_ascii_lowercase();
-        self.inner
+        let results = self
+            .inner
             .get_channels()
             .into_iter()
             .filter(|channel| {
@@ -59,14 +74,17 @@ impl CatalogService for IptvCatalogService {
                         .collect::<Vec<&String>>()
                         .is_empty()
             })
-            .collect()
+            .collect();
+
+        self.filter_channels_with_feeds(results)
     }
 
     fn filter_by_category_id(&self, category_id: &str) -> Channels {
         if category_id.is_empty() {
             return vec![];
         }
-        self.inner
+        let results = self
+            .inner
             .get_channels()
             .into_iter()
             .filter(|channel| {
@@ -77,18 +95,23 @@ impl CatalogService for IptvCatalogService {
                     .collect::<Vec<&String>>()
                     .is_empty()
             })
-            .collect()
+            .collect();
+
+        self.filter_channels_with_feeds(results)
     }
 
     fn filter_by_country(&self, country_code: &str) -> Channels {
         if country_code.is_empty() {
             return vec![];
         }
-        self.inner
+        let results = self
+            .inner
             .get_channels()
             .into_iter()
             .filter(|channel| channel.country_code.eq_ignore_ascii_case(&country_code))
-            .collect()
+            .collect();
+
+        self.filter_channels_with_feeds(results)
     }
 
     fn filter_by_language(&self, language_code: &str) -> Channels {
@@ -103,12 +126,12 @@ impl CatalogService for IptvCatalogService {
         });
         match country {
             None => vec![],
-            Some(country) => self.filter_by_country(&country.code),
+            Some(country) => self.filter_channels_with_feeds(self.filter_by_country(&country.code)),
         }
     }
 
     fn get_all(&self) -> Channels {
-        self.inner.get_channels()
+        self.filter_channels_with_feeds(self.inner.get_channels())
     }
 
     fn get_categories(&self) -> Categories {
@@ -175,6 +198,40 @@ mod tests {
 
         fn with_countries(mut self, countries: Countries) -> Self {
             self.countries = countries;
+            self
+        }
+
+        fn with_feeds_for_channel(mut self, channel_id: &str) -> Self {
+            use crate::domain::Feed;
+            self.feeds_by_channel.insert(
+                channel_id.to_string(),
+                vec![Feed {
+                    id: format!("{}_feed", channel_id),
+                    channel_id: channel_id.to_string(),
+                    name: "".to_string(),
+                    broadcast_codes: vec![],
+                    language_codes: vec![],
+                    is_main: false,
+                }],
+            );
+            self
+        }
+
+        fn with_feeds_for_channels(mut self, channel_ids: &[&str]) -> Self {
+            use crate::domain::Feed;
+            for channel_id in channel_ids {
+                self.feeds_by_channel.insert(
+                    channel_id.to_string(),
+                    vec![Feed {
+                        id: format!("{}_feed", channel_id),
+                        channel_id: channel_id.to_string(),
+                        name: "".to_string(),
+                        broadcast_codes: vec![],
+                        language_codes: vec![],
+                        is_main: false,
+                    }],
+                );
+            }
             self
         }
     }
@@ -264,10 +321,13 @@ mod tests {
 
     #[test]
     fn get_all_channels() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
-            channel_with("cnn", "CNN", vec![], vec![], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
+                channel_with("cnn", "CNN", vec![], vec![], "US"),
+            ])
+            .with_feeds_for_channels(&["bbc1", "cnn"]),
+        );
 
         svc.refresh();
 
@@ -280,10 +340,13 @@ mod tests {
 
     #[test]
     fn search_matches_channel_by_name() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
-            channel_with("cnn", "CNN", vec![], vec![], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
+                channel_with("cnn", "CNN", vec![], vec![], "US"),
+            ])
+            .with_feeds_for_channels(&["bbc1", "cnn"]),
+        );
 
         let result = svc.search("BBC");
 
@@ -293,13 +356,16 @@ mod tests {
 
     #[test]
     fn search_matches_channel_by_alt_name() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "cnn",
-            "CNN",
-            vec!["Cable News Network"],
-            vec![],
-            "US",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "cnn",
+                "CNN",
+                vec!["Cable News Network"],
+                vec![],
+                "US",
+            )])
+            .with_feeds_for_channel("cnn"),
+        );
 
         let result = svc.search("Cable News");
 
@@ -309,10 +375,13 @@ mod tests {
 
     #[test]
     fn search_matches_name_and_alt_names() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("bbc1", "BBC One", vec!["BBC1"], vec![], "GB"),
-            channel_with("bbcworld", "BBC World", vec![], vec![], "GB"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec!["BBC1"], vec![], "GB"),
+                channel_with("bbcworld", "BBC World", vec![], vec![], "GB"),
+            ])
+            .with_feeds_for_channels(&["bbc1", "bbcworld"]),
+        );
 
         let result = svc.search("bbc");
 
@@ -321,13 +390,16 @@ mod tests {
 
     #[test]
     fn search_is_case_insensitive() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "disc",
-            "Discovery",
-            vec![],
-            vec![],
-            "US",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "disc",
+                "Discovery",
+                vec![],
+                vec![],
+                "US",
+            )])
+            .with_feeds_for_channel("disc"),
+        );
 
         let result = svc.search("discovery");
 
@@ -337,23 +409,23 @@ mod tests {
 
     #[test]
     fn search_returns_empty_when_no_match() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "bbc1",
-            "BBC One",
-            vec![],
-            vec![],
-            "GB",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
+                .with_feeds_for_channel("bbc1"),
+        );
 
         assert!(svc.search("xyzzy").is_empty());
     }
 
     #[test]
     fn search_matches_only_name_or_alt_names() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("news24", "News24", vec![], vec!["sports"], "US"),
-            channel_with("lateshow", "Late Show", vec![], vec!["sports"], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("news24", "News24", vec![], vec!["sports"], "US"),
+                channel_with("lateshow", "Late Show", vec![], vec!["sports"], "US"),
+            ])
+            .with_feeds_for_channels(&["news24", "lateshow"]),
+        );
 
         // Category ids and country codes must not leak into search results.
         assert!(svc.search("sports").is_empty());
@@ -364,24 +436,24 @@ mod tests {
 
     #[test]
     fn search_with_empty_or_whitespace_query_returns_empty() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "bbc1",
-            "BBC One",
-            vec![],
-            vec![],
-            "GB",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
+                .with_feeds_for_channel("bbc1"),
+        );
         assert!(svc.search("").is_empty());
         assert!(svc.search("   ").is_empty());
     }
 
     #[test]
     fn search_returns_all_partial_matches() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("news", "News", vec![], vec![], "GB"),
-            channel_with("news24", "News24", vec![], vec![], "GB"),
-            channel_with("sportsnews", "Sports News", vec![], vec![], "GB"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("news", "News", vec![], vec![], "GB"),
+                channel_with("news24", "News24", vec![], vec![], "GB"),
+                channel_with("sportsnews", "Sports News", vec![], vec![], "GB"),
+            ])
+            .with_feeds_for_channels(&["news", "news24", "sportsnews"]),
+        );
 
         let result = svc.search("news");
 
@@ -390,10 +462,13 @@ mod tests {
 
     #[test]
     fn filter_by_category_id_matches_channels_with_id() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
-            channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
+                channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
+            ])
+            .with_feeds_for_channels(&["bbc1", "mov1"]),
+        );
 
         let result = svc.filter_by_category_id("news");
 
@@ -403,13 +478,16 @@ mod tests {
 
     #[test]
     fn filter_by_category_id_matches_any_entry() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "bbc1",
-            "BBC One",
-            vec![],
-            vec!["news", "sports"],
-            "GB",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "bbc1",
+                "BBC One",
+                vec![],
+                vec!["news", "sports"],
+                "GB",
+            )])
+            .with_feeds_for_channel("bbc1"),
+        );
 
         let result = svc.filter_by_category_id("sports");
 
@@ -419,37 +497,46 @@ mod tests {
 
     #[test]
     fn filter_by_category_id_returns_empty_for_unknown() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "bbc1",
-            "BBC One",
-            vec![],
-            vec!["news"],
-            "GB",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "bbc1",
+                "BBC One",
+                vec![],
+                vec!["news"],
+                "GB",
+            )])
+            .with_feeds_for_channel("bbc1"),
+        );
 
         assert!(svc.filter_by_category_id("movies").is_empty());
     }
 
     #[test]
     fn filter_by_category_id_with_empty_string_returns_empty() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "bbc1",
-            "BBC One",
-            vec![],
-            vec!["news"],
-            "GB",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with(
+                "bbc1",
+                "BBC One",
+                vec![],
+                vec!["news"],
+                "GB",
+            )])
+            .with_feeds_for_channel("bbc1"),
+        );
 
         assert!(svc.filter_by_category_id("").is_empty());
     }
 
     #[test]
     fn filter_by_category_id_returns_all_matching_channels() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
-            channel_with("sky1", "Sky News", vec![], vec!["news"], "GB"),
-            channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
+                channel_with("sky1", "Sky News", vec![], vec!["news"], "GB"),
+                channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
+            ])
+            .with_feeds_for_channels(&["bbc1", "sky1", "mov1"]),
+        );
 
         let result = svc.filter_by_category_id("news");
 
@@ -458,11 +545,14 @@ mod tests {
 
     #[test]
     fn filter_by_country_matches_exact_code() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("us1", "US One", vec![], vec![], "US"),
-            channel_with("gb1", "GB One", vec![], vec![], "GB"),
-            channel_with("de1", "DE One", vec![], vec![], "DE"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("gb1", "GB One", vec![], vec![], "GB"),
+                channel_with("de1", "DE One", vec![], vec![], "DE"),
+            ])
+            .with_feeds_for_channels(&["us1", "gb1", "de1"]),
+        );
 
         let result = svc.filter_by_country("US");
 
@@ -472,34 +562,37 @@ mod tests {
 
     #[test]
     fn filter_by_country_returns_empty_for_unknown() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("us1", "US One", vec![], vec![], "US"),
-            channel_with("gb1", "GB One", vec![], vec![], "GB"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("gb1", "GB One", vec![], vec![], "GB"),
+            ])
+            .with_feeds_for_channels(&["us1", "gb1"]),
+        );
 
         assert!(svc.filter_by_country("FR").is_empty());
     }
 
     #[test]
     fn filter_by_country_with_empty_string_returns_empty() {
-        let svc = service(MockCatalogRepository::new(vec![channel_with(
-            "us1",
-            "US One",
-            vec![],
-            vec![],
-            "US",
-        )]));
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
+                .with_feeds_for_channel("us1"),
+        );
 
         assert!(svc.filter_by_country("").is_empty());
     }
 
     #[test]
     fn filter_by_country_returns_all_matching_channels() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("us1", "US One", vec![], vec![], "US"),
-            channel_with("sky1", "Sky News", vec![], vec![], "GB"),
-            channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("us1", "US One", vec![], vec![], "US"),
+                channel_with("sky1", "Sky News", vec![], vec![], "GB"),
+                channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
+            ])
+            .with_feeds_for_channels(&["us1", "sky1", "bbc1"]),
+        );
 
         let result = svc.filter_by_country("GB");
 
@@ -508,13 +601,16 @@ mod tests {
 
     #[test]
     fn filter_by_country_matches_all_with_that_code_in_order() {
-        let svc = service(MockCatalogRepository::new(vec![
-            channel_with("a", "A", vec![], vec![], "US"),
-            channel_with("b", "B", vec![], vec![], "DE"),
-            channel_with("c", "C", vec![], vec![], "US"),
-            channel_with("d", "D", vec![], vec![], "FR"),
-            channel_with("e", "E", vec![], vec![], "US"),
-        ]));
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("a", "A", vec![], vec![], "US"),
+                channel_with("b", "B", vec![], vec![], "DE"),
+                channel_with("c", "C", vec![], vec![], "US"),
+                channel_with("d", "D", vec![], vec![], "FR"),
+                channel_with("e", "E", vec![], vec![], "US"),
+            ])
+            .with_feeds_for_channels(&["a", "b", "c", "d", "e"]),
+        );
 
         let result = svc.filter_by_country("US");
 
@@ -534,7 +630,8 @@ mod tests {
                 country_with("US", "United States", &["en".into()]),
                 country_with("GB", "United Kingdom", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
-            ]),
+            ])
+            .with_feeds_for_channels(&["us1", "us2", "gb1"]),
         );
 
         svc.refresh();
@@ -557,7 +654,8 @@ mod tests {
                 country_with("US", "United States", &["en".into()]),
                 country_with("GB", "United Kingdom", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
-            ]),
+            ])
+            .with_feeds_for_channels(&["us1", "gb1"]),
         );
 
         svc.refresh();
@@ -578,7 +676,8 @@ mod tests {
             .with_countries(vec![
                 country_with("CA", "Canada", &["en".into(), "fr".into()]),
                 country_with("US", "United States", &["en".into()]),
-            ]),
+            ])
+            .with_feeds_for_channels(&["ca1", "us1"]),
         );
 
         svc.refresh();
@@ -600,7 +699,8 @@ mod tests {
                 country_with("US", "United States", &["en".into()]),
                 country_with("DE", "Germany", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
-            ]),
+            ])
+            .with_feeds_for_channels(&["us1", "de1"]),
         );
 
         svc.refresh();
@@ -615,7 +715,8 @@ mod tests {
     fn filter_by_language_is_case_insensitive() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_countries(vec![country_with("US", "United States", &["EN".into()])]),
+                .with_countries(vec![country_with("US", "United States", &["EN".into()])])
+                .with_feeds_for_channel("us1"),
         );
 
         svc.refresh();
@@ -630,7 +731,8 @@ mod tests {
     fn filter_by_language_returns_empty_for_unknown_code() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_countries(vec![country_with("US", "United States", &["en".into()])]),
+                .with_countries(vec![country_with("US", "United States", &["en".into()])])
+                .with_feeds_for_channel("us1"),
         );
 
         svc.refresh();
@@ -642,7 +744,8 @@ mod tests {
     fn filter_by_language_with_empty_string_returns_empty() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_countries(vec![country_with("US", "United States", &["en".into()])]),
+                .with_countries(vec![country_with("US", "United States", &["en".into()])])
+                .with_feeds_for_channel("us1"),
         );
 
         svc.refresh();
@@ -657,7 +760,8 @@ mod tests {
                 channel_with("us1", "US One", vec![], vec![], "US"),
                 channel_with("us2", "US Two", vec![], vec![], "US"),
             ])
-            .with_countries(vec![country_with("US", "United States", &["en".into()])]),
+            .with_countries(vec![country_with("US", "United States", &["en".into()])])
+            .with_feeds_for_channels(&["us1", "us2"]),
         );
 
         svc.refresh();
@@ -677,7 +781,8 @@ mod tests {
             .with_countries(vec![
                 country_with("CA", "Canada", &["en".into(), "fr".into()]),
                 country_with("US", "United States", &["en".into()]),
-            ]),
+            ])
+            .with_feeds_for_channels(&["ca1", "us1"]),
         );
 
         svc.refresh();
