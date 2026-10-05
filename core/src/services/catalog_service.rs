@@ -1,5 +1,6 @@
 use crate::domain::{Categories, Channel, Channels, Countries, Languages};
 use crate::services::CatalogRepository;
+use std::ascii::AsciiExt;
 use std::sync::Arc;
 
 /**
@@ -18,6 +19,8 @@ pub trait CatalogService: Send + Sync {
     fn filter_by_language(&self, language_code: &str) -> Channels;
 
     fn get_all(&self) -> Channels;
+
+    fn get_active_channels(&self) -> Channels;
 
     fn get_categories(&self) -> Categories;
 
@@ -46,13 +49,6 @@ impl IptvCatalogService {
             .map(|f| !f.is_empty())
             .unwrap_or_default()
     }
-
-    fn filter_channels_with_feeds(&self, channels: Channels) -> Channels {
-        channels
-            .into_iter()
-            .filter(|c| self.has_feeds(&c.id))
-            .collect()
-    }
 }
 
 impl CatalogService for IptvCatalogService {
@@ -60,78 +56,72 @@ impl CatalogService for IptvCatalogService {
         if query.is_empty() {
             return vec![];
         }
-        let query = query.to_ascii_lowercase();
-        let results = self
-            .inner
+        let query = query.to_lowercase();
+        self.inner
             .get_channels()
             .into_iter()
             .filter(|channel| {
-                channel.name.to_ascii_lowercase().contains(&query)
-                    || !channel
-                        .alt_names
-                        .iter()
-                        .filter(|c| c.to_ascii_lowercase().contains(&query))
-                        .collect::<Vec<&String>>()
-                        .is_empty()
+                channel.name.contains(&query)
+                    || channel.alt_names.iter().any(|alt| alt.contains(&query))
             })
-            .collect();
-
-        self.filter_channels_with_feeds(results)
+            .collect()
     }
 
     fn filter_by_category_id(&self, category_id: &str) -> Channels {
         if category_id.is_empty() {
             return vec![];
         }
-        let results = self
-            .inner
+        self.inner
             .get_channels()
             .into_iter()
             .filter(|channel| {
-                !channel
+                channel
                     .category_ids
                     .iter()
-                    .filter(|category| category.eq_ignore_ascii_case(category_id))
-                    .collect::<Vec<&String>>()
-                    .is_empty()
+                    .any(|id| id.contains(category_id))
+                    && self.has_feeds(&channel.id)
             })
-            .collect();
-
-        self.filter_channels_with_feeds(results)
+            .collect()
     }
 
     fn filter_by_country(&self, country_code: &str) -> Channels {
         if country_code.is_empty() {
             return vec![];
         }
-        let results = self
-            .inner
+        self.inner
             .get_channels()
             .into_iter()
-            .filter(|channel| channel.country_code.eq_ignore_ascii_case(&country_code))
-            .collect();
-
-        self.filter_channels_with_feeds(results)
+            .filter(|channel| {
+                channel.country_code.contains(&country_code) && self.has_feeds(&channel.id)
+            })
+            .collect()
     }
 
     fn filter_by_language(&self, language_code: &str) -> Channels {
         if language_code.is_empty() {
             return vec![];
         }
-        let country = self.inner.get_countries().into_iter().find(|country| {
-            country
-                .languages
-                .iter()
-                .any(|lang| lang.to_ascii_lowercase() == language_code.to_ascii_lowercase())
-        });
+        let country = self
+            .inner
+            .get_countries()
+            .into_iter()
+            .find(|country| country.languages.iter().any(|lang| lang == &language_code));
         match country {
             None => vec![],
-            Some(country) => self.filter_channels_with_feeds(self.filter_by_country(&country.code)),
+            Some(country) => self.filter_by_country(&country.code),
         }
     }
 
     fn get_all(&self) -> Channels {
-        self.filter_channels_with_feeds(self.inner.get_channels())
+        self.inner.get_channels()
+    }
+
+    fn get_active_channels(&self) -> Channels {
+        self.inner
+            .get_channels()
+            .into_iter()
+            .filter(|channel| self.has_feeds(&channel.id))
+            .collect()
     }
 
     fn get_categories(&self) -> Categories {
@@ -205,14 +195,14 @@ mod tests {
             use crate::domain::Feed;
             self.feeds_by_channel.insert(
                 channel_id.to_string(),
-                vec![Feed {
+                vec![Arc::new(Feed {
                     id: format!("{}_feed", channel_id),
                     channel_id: channel_id.to_string(),
                     name: "".to_string(),
                     broadcast_codes: vec![],
                     language_codes: vec![],
                     is_main: false,
-                }],
+                })],
             );
             self
         }
@@ -222,14 +212,14 @@ mod tests {
             for channel_id in channel_ids {
                 self.feeds_by_channel.insert(
                     channel_id.to_string(),
-                    vec![Feed {
+                    vec![Arc::new(Feed {
                         id: format!("{}_feed", channel_id),
                         channel_id: channel_id.to_string(),
                         name: "".to_string(),
                         broadcast_codes: vec![],
                         language_codes: vec![],
                         is_main: false,
-                    }],
+                    })],
                 );
             }
             self
@@ -241,7 +231,7 @@ mod tests {
             self.channels.clone()
         }
 
-        fn get_channel_by_id(&self, _channel_id: &str) -> Option<Channel> {
+        fn get_channel_by_id(&self, _channel_id: &str) -> Option<Arc<Channel>> {
             None
         }
 
@@ -280,8 +270,8 @@ mod tests {
         alt_names: Vec<&str>,
         category_ids: Vec<&str>,
         country_code: &str,
-    ) -> Channel {
-        Channel {
+    ) -> Arc<Channel> {
+        Arc::new(Channel {
             id: id.to_string(),
             name: name.to_string(),
             alt_names: alt_names.into_iter().map(|s| s.to_string()).collect(),
@@ -292,20 +282,20 @@ mod tests {
             closed: None,
             website: String::new(),
             network: String::new(),
-        }
+        })
     }
 
     fn service(repo: MockCatalogRepository) -> IptvCatalogService {
         IptvCatalogService::new(Arc::new(repo))
     }
 
-    fn country_with(code: &str, name: &str, languages: &[String]) -> Country {
-        Country {
+    fn country_with(code: &str, name: &str, languages: &[String]) -> Arc<Country> {
+        Arc::new(Country {
             code: code.into(),
             name: name.into(),
             languages: languages.into(),
             flag_url: "".to_string(),
-        }
+        })
     }
 
     #[test]
@@ -342,14 +332,12 @@ mod tests {
     fn search_matches_channel_by_name() {
         let svc = service(
             MockCatalogRepository::new(vec![
-                channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
-                channel_with("cnn", "CNN", vec![], vec![], "US"),
+                channel_with("bbc1", "bbc one", vec![], vec![], "GB"),
+                channel_with("cnn", "cnn", vec![], vec![], "US"),
             ])
             .with_feeds_for_channels(&["bbc1", "cnn"]),
         );
-
         let result = svc.search("BBC");
-
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "bbc1");
     }
@@ -359,8 +347,8 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with(
                 "cnn",
-                "CNN",
-                vec!["Cable News Network"],
+                "cnn",
+                vec!["cable news network"],
                 vec![],
                 "US",
             )])
@@ -377,8 +365,8 @@ mod tests {
     fn search_matches_name_and_alt_names() {
         let svc = service(
             MockCatalogRepository::new(vec![
-                channel_with("bbc1", "BBC One", vec!["BBC1"], vec![], "GB"),
-                channel_with("bbcworld", "BBC World", vec![], vec![], "GB"),
+                channel_with("bbc1", "bbc one", vec!["bbc1"], vec![], "GB"),
+                channel_with("bbcworld", "bbc world", vec![], vec![], "GB"),
             ])
             .with_feeds_for_channels(&["bbc1", "bbcworld"]),
         );
@@ -393,7 +381,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with(
                 "disc",
-                "Discovery",
+                "discovery",
                 vec![],
                 vec![],
                 "US",
@@ -421,8 +409,8 @@ mod tests {
     fn search_matches_only_name_or_alt_names() {
         let svc = service(
             MockCatalogRepository::new(vec![
-                channel_with("news24", "News24", vec![], vec!["sports"], "US"),
-                channel_with("lateshow", "Late Show", vec![], vec!["sports"], "US"),
+                channel_with("news24", "news24", vec![], vec!["sports"], "US"),
+                channel_with("lateshow", "late show", vec![], vec!["sports"], "US"),
             ])
             .with_feeds_for_channels(&["news24", "lateshow"]),
         );
@@ -448,9 +436,9 @@ mod tests {
     fn search_returns_all_partial_matches() {
         let svc = service(
             MockCatalogRepository::new(vec![
-                channel_with("news", "News", vec![], vec![], "GB"),
-                channel_with("news24", "News24", vec![], vec![], "GB"),
-                channel_with("sportsnews", "Sports News", vec![], vec![], "GB"),
+                channel_with("news", "news", vec![], vec![], "GB"),
+                channel_with("news24", "news24", vec![], vec![], "GB"),
+                channel_with("sportsnews", "sports news", vec![], vec![], "GB"),
             ])
             .with_feeds_for_channels(&["news", "news24", "sportsnews"]),
         );
@@ -464,8 +452,8 @@ mod tests {
     fn filter_by_category_id_matches_channels_with_id() {
         let svc = service(
             MockCatalogRepository::new(vec![
-                channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
-                channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
+                channel_with("bbc1", "bbc one", vec![], vec!["news"], "GB"),
+                channel_with("mov1", "movie one", vec![], vec!["movies"], "US"),
             ])
             .with_feeds_for_channels(&["bbc1", "mov1"]),
         );
@@ -481,7 +469,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with(
                 "bbc1",
-                "BBC One",
+                "bbc one",
                 vec![],
                 vec!["news", "sports"],
                 "GB",
@@ -500,7 +488,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with(
                 "bbc1",
-                "BBC One",
+                "bbc one",
                 vec![],
                 vec!["news"],
                 "GB",
@@ -714,8 +702,8 @@ mod tests {
     #[test]
     fn filter_by_language_is_case_insensitive() {
         let svc = service(
-            MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_countries(vec![country_with("US", "United States", &["EN".into()])])
+            MockCatalogRepository::new(vec![channel_with("us1", "us one", vec![], vec![], "US")])
+                .with_countries(vec![country_with("US", "united states", &["en".into()])])
                 .with_feeds_for_channel("us1"),
         );
 
