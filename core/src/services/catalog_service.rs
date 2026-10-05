@@ -1,6 +1,5 @@
 use crate::domain::{Categories, Channel, Channels, Countries, Languages};
 use crate::services::CatalogRepository;
-use std::ascii::AsciiExt;
 use std::sync::Arc;
 
 /**
