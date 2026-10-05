@@ -1,9 +1,9 @@
-use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
 use crate::HttpClient;
+use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
 use anyhow::Result as Res;
 use core::domain::{
-    channel::Channels, country::Countries, feed::Feeds, language::Languages, program::Programs,
-    stream::Streams, Categories,
+    Categories, channel::Channels, country::Countries, feed::Feeds, language::Languages,
+    program::Programs, stream::Streams,
 };
 use core::ports::ChannelDataSource;
 use std::sync::Arc;
@@ -89,9 +89,9 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
     use core::domain::{Channel, Country, Feed, Language, Stream};
-    use httpmock::prelude::{Method, GET};
     use httpmock::MockServer;
-    use serde_json::{json, Value};
+    use httpmock::prelude::{GET, Method};
+    use serde_json::{Value, json};
     use std::str::FromStr;
 
     struct TestServer {
@@ -149,7 +149,7 @@ mod tests {
 
         assert_eq!(
             channels,
-            vec![Channel {
+            vec![Arc::new(Channel {
                 id: "channel-1".to_string(),
                 name: "France 3".to_string(),
                 alt_names: vec!["France 3 Paris".to_string()],
@@ -160,7 +160,7 @@ mod tests {
                 closed: None,
                 website: "https://www.france.tv/france-3/".to_string(),
                 network: "France Télévisions".to_string(),
-            }]
+            })]
         );
     }
 
@@ -188,14 +188,14 @@ mod tests {
 
         assert_eq!(
             feeds,
-            vec![Feed {
+            vec![Arc::new(Feed {
                 id: "feed-1".to_string(),
                 channel_id: "channel-1".to_string(),
                 name: "France 3 Paris IDF".to_string(),
                 broadcast_codes: vec!["ParisIleDeFrance".to_string()],
                 language_codes: vec!["fr".to_string()],
                 is_main: false,
-            }]
+            })]
         );
     }
 
@@ -221,7 +221,7 @@ mod tests {
 
         assert_eq!(
             streams,
-            vec![Stream {
+            vec![Arc::new(Stream {
                 channel_id: "channel-1".to_string(),
                 feed_id: "feed-1".to_string(),
                 url: "https://example.com/stream.m3u8".to_string(),
@@ -229,7 +229,7 @@ mod tests {
                 referrer: "https://example.com".to_string(),
                 title: "France 3".to_string(),
                 user_agent: "Mozilla/5.0".to_string(),
-            }]
+            })]
         );
     }
 
@@ -252,12 +252,12 @@ mod tests {
 
         assert_eq!(
             countries,
-            vec![Country {
+            vec![Arc::new(Country {
                 code: "FR".to_string(),
                 name: "France".to_string(),
                 languages: vec!["fr".to_string()],
                 flag_url: "🇫🇷".to_string(),
-            }]
+            })]
         );
     }
 
@@ -278,10 +278,10 @@ mod tests {
 
         assert_eq!(
             languages,
-            vec![Language {
+            vec![Arc::new(Language {
                 code: "fr".to_string(),
                 name: "French".to_string(),
-            }]
+            })]
         );
     }
 }
