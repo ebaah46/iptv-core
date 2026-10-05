@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /**
 * Categories of broadcasts that channels provide.
@@ -11,4 +12,4 @@ pub struct Category {
     pub description: String,
 }
 
-pub type Categories = Vec<Category>;
+pub type Categories = Vec<Arc<Category>>;

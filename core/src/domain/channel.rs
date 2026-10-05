@@ -3,7 +3,7 @@
 */
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Channel {
@@ -19,4 +19,4 @@ pub struct Channel {
     pub network: String,
 }
 
-pub type Channels = Vec<Channel>;
+pub type Channels = Vec<Arc<Channel>>;

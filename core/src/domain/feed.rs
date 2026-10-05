@@ -4,7 +4,7 @@
 * streaming.
 */
 use serde::{Deserialize, Serialize};
-
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Feed {
@@ -16,4 +16,4 @@ pub struct Feed {
     pub is_main: bool,
 }
 
-pub type Feeds = Vec<Feed>;
+pub type Feeds = Vec<Arc<Feed>>;

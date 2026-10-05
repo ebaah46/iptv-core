@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /**
 * Countries that channels broadcast from
@@ -12,4 +13,4 @@ pub struct Country {
     pub flag_url: String,
 }
 
-pub type Countries = Vec<Country>;
+pub type Countries = Vec<Arc<Country>>;

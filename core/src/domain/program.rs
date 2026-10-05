@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /**
 * Programs that are scheduled for channels
@@ -14,4 +15,4 @@ pub struct Program {
     pub stop: DateTime<Utc>,
 }
 
-pub type Programs = Vec<Program>;
+pub type Programs = Vec<Arc<Program>>;

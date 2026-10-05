@@ -3,7 +3,7 @@
 * used for accessing the TV channel.
 */
 use serde::{Deserialize, Serialize};
-
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize, Clone)]
 pub struct Stream {
@@ -16,4 +16,4 @@ pub struct Stream {
     pub user_agent: String,
 }
 
-pub type Streams = Vec<Stream>;
+pub type Streams = Vec<Arc<Stream>>;

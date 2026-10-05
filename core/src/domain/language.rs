@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /**
 * Languages that broadcasts are provided in
@@ -10,4 +11,4 @@ pub struct Language {
     pub name: String,
 }
 
-pub type Languages = Vec<Language>;
+pub type Languages = Vec<Arc<Language>>;
