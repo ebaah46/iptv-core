@@ -98,7 +98,7 @@ impl IpTvPlaybackController {
         let stream = Stream {
             channel_id: String::new(),
             feed_id: String::new(),
-            url: url,
+            url,
             quality: String::new(),
             referrer: String::new(),
             title: String::new(),
@@ -128,7 +128,7 @@ impl PlaybackController for IpTvPlaybackController {
             return;
         }
 
-        let urls: Vec<String> = streams.into_iter().map(|s| s.url).collect();
+        let urls: Vec<String> = streams.into_iter().map(|s| s.url.clone()).collect();
         info!("Links for stream are {}", urls.len());
         *self.candidates.write() = urls.clone();
 
@@ -334,14 +334,16 @@ mod tests {
 
     fn make_streams(channel_id: &str, urls: Vec<&str>) -> Streams {
         urls.into_iter()
-            .map(|url| Stream {
-                channel_id: channel_id.to_string(),
-                feed_id: String::new(),
-                url: url.to_string(),
-                quality: String::new(),
-                referrer: String::new(),
-                title: String::new(),
-                user_agent: String::new(),
+            .map(|url| {
+                Arc::new(Stream {
+                    channel_id: channel_id.to_string(),
+                    feed_id: String::new(),
+                    url: url.to_string(),
+                    quality: String::new(),
+                    referrer: String::new(),
+                    title: String::new(),
+                    user_agent: String::new(),
+                })
             })
             .collect()
     }
