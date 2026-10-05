@@ -1,4 +1,7 @@
-use crate::domain::{Categories, Channel, Channels, Countries, Feeds, Languages, Streams};
+use crate::domain::{
+    Categories, Category, Channel, Channels, Countries, Country, Feed, Feeds, Language, Languages,
+    Stream, Streams,
+};
 use crate::ports::{CacheStore, ChannelDataSource};
 use log::info;
 use parking_lot::RwLock;
@@ -17,7 +20,7 @@ pub trait CatalogRepository: Debug + Send + Sync {
     fn get_channels(&self) -> Channels;
 
     /// Get channels with a given channel id
-    fn get_channel_by_id(&self, channel_id: &str) -> Option<Channel>;
+    fn get_channel_by_id(&self, channel_id: &str) -> Option<Arc<Channel>>;
 
     /// Get all the feeds associated with a channel
     fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds>;
@@ -46,7 +49,7 @@ pub trait CatalogRepository: Debug + Send + Sync {
 pub struct IptvCatalogRepository {
     cache: Arc<dyn CacheStore>,
     data_source: Arc<dyn ChannelDataSource>,
-    channels: RwLock<HashMap<String, Channel>>,
+    channels: RwLock<HashMap<String, Arc<Channel>>>,
     feeds_by_channel: RwLock<HashMap<String, Feeds>>,
     streams_by_key: RwLock<HashMap<(String, Option<String>), Streams>>,
     categories: RwLock<Categories>,
@@ -122,7 +125,7 @@ impl CatalogRepository for IptvCatalogRepository {
         read_guard.values().cloned().collect()
     }
 
-    fn get_channel_by_id(&self, channel_id: &str) -> Option<Channel> {
+    fn get_channel_by_id(&self, channel_id: &str) -> Option<Arc<Channel>> {
         let read_guard = self.channels.read();
         read_guard.get(channel_id).cloned()
     }
@@ -220,8 +223,8 @@ struct CatalogSnapShot {
 mod tests {
     use super::*;
     use crate::domain::{Category, Country, Feed, Language, Programs, Stream};
-    use anyhow::anyhow;
     use anyhow::Result as Res;
+    use anyhow::anyhow;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Test double for `ChannelDataSource` whose contents can be changed
@@ -386,8 +389,8 @@ mod tests {
         }
     }
 
-    fn channel(id: &str) -> Channel {
-        Channel {
+    fn channel(id: &str) -> Arc<Channel> {
+        Arc::new(Channel {
             id: id.to_string(),
             name: format!("Channel {}", id),
             alt_names: vec![],
@@ -398,22 +401,22 @@ mod tests {
             closed: None,
             website: String::new(),
             network: String::new(),
-        }
+        })
     }
 
-    fn feed(id: &str, channel_id: &str) -> Feed {
-        Feed {
+    fn feed(id: &str, channel_id: &str) -> Arc<Feed> {
+        Arc::new(Feed {
             id: id.to_string(),
             channel_id: channel_id.to_string(),
             name: format!("Feed {}", id),
             broadcast_codes: vec![],
             language_codes: vec![],
             is_main: false,
-        }
+        })
     }
 
-    fn stream(channel_id: &str, feed_id: &str) -> Stream {
-        Stream {
+    fn stream(channel_id: &str, feed_id: &str) -> Arc<Stream> {
+        Arc::new(Stream {
             channel_id: channel_id.to_string(),
             feed_id: feed_id.to_string(),
             url: format!("https://example.com/{}/{}.m3u8", channel_id, feed_id),
@@ -421,31 +424,31 @@ mod tests {
             referrer: String::new(),
             title: format!("Stream {}/{}", channel_id, feed_id),
             user_agent: String::new(),
-        }
+        })
     }
 
-    fn category(id: &str, name: &str) -> Category {
-        Category {
+    fn category(id: &str, name: &str) -> Arc<Category> {
+        Arc::new(Category {
             id: id.to_string(),
             name: name.to_string(),
             description: String::new(),
-        }
+        })
     }
 
-    fn country(code: &str, name: &str, languages: &[&str]) -> Country {
-        Country {
+    fn country(code: &str, name: &str, languages: &[&str]) -> Arc<Country> {
+        Arc::new(Country {
             code: code.to_string(),
             name: name.to_string(),
             languages: languages.iter().map(|s| s.to_string()).collect(),
             flag_url: String::new(),
-        }
+        })
     }
 
-    fn language(code: &str, name: &str) -> Language {
-        Language {
+    fn language(code: &str, name: &str) -> Arc<Language> {
+        Arc::new(Language {
             code: code.to_string(),
             name: name.to_string(),
-        }
+        })
     }
 
     #[test]
@@ -474,10 +477,7 @@ mod tests {
             repository.get_candidate_streams("ch1", Some("feed1")),
             Some(vec![stream("ch1", "feed1")])
         );
-        assert_eq!(
-            repository.get_categories(),
-            vec![category("news", "News")]
-        );
+        assert_eq!(repository.get_categories(), vec![category("news", "News")]);
         assert_eq!(
             repository.get_countries(),
             vec![country("US", "United States", &["en"])]
@@ -844,7 +844,10 @@ mod tests {
 
         repository.refresh();
 
-        assert_eq!(repository.get_categories(), vec![category("sports", "Sports")]);
+        assert_eq!(
+            repository.get_categories(),
+            vec![category("sports", "Sports")]
+        );
     }
 
     #[test]
