@@ -11,9 +11,13 @@ use std::sync::Arc;
 
 pub fn map_channel_dto(dto: ChannelDTO) -> Option<Arc<Channel>> {
     Some(Arc::new(Channel {
-        id: dto.id,
-        name: dto.name,
-        alt_names: dto.alt_names,
+        id: dto.id.to_ascii_lowercase(),
+        name: dto.name.to_ascii_lowercase(),
+        alt_names: dto
+            .alt_names
+            .into_iter()
+            .map(|name| name.to_ascii_lowercase())
+            .collect(),
         category_ids: dto.categories,
         country_code: dto.country,
         is_nsfw: dto.is_nsfw,
@@ -38,9 +42,9 @@ pub fn map_stream_dto(dto: StreamDTO) -> Option<Arc<Stream>> {
 
 pub fn map_feed_dto(dto: FeedDTO) -> Option<Arc<Feed>> {
     Some(Arc::new(Feed {
-        id: Some(dto.id).filter(|id| !id.is_empty())?,
-        channel_id: Some(dto.channel).filter(|id| !id.is_empty())?,
-        name: Some(dto.name).filter(|id| !id.is_empty())?,
+        id: Some(dto.id.to_ascii_lowercase()).filter(|id| !id.is_empty())?,
+        channel_id: Some(dto.channel.to_ascii_lowercase()).filter(|id| !id.is_empty())?,
+        name: Some(dto.name.to_ascii_lowercase()).filter(|id| !id.is_empty())?,
         broadcast_codes: dto.broadcast_area,
         language_codes: dto.languages,
         is_main: false,
@@ -49,14 +53,14 @@ pub fn map_feed_dto(dto: FeedDTO) -> Option<Arc<Feed>> {
 
 pub fn map_language_dto(dto: LanguageDTO) -> Option<Arc<Language>> {
     Some(Arc::new(Language {
-        code: dto.code,
-        name: dto.name,
+        code: dto.code.to_ascii_lowercase(),
+        name: dto.name.to_ascii_lowercase(),
     }))
 }
 pub fn map_country_dto(dto: CountryDTO) -> Option<Arc<Country>> {
     Some(Arc::new(Country {
-        code: dto.code,
-        name: dto.name,
+        code: dto.code.to_ascii_lowercase(),
+        name: dto.name.to_ascii_lowercase(),
         languages: dto.languages,
         flag_url: dto.flag,
     }))
@@ -64,8 +68,8 @@ pub fn map_country_dto(dto: CountryDTO) -> Option<Arc<Country>> {
 
 pub fn map_category_dto(dto: CategoryDTO) -> Option<Arc<Category>> {
     Some(Arc::new(Category {
-        id: dto.id,
-        name: dto.name,
+        id: dto.id.to_ascii_lowercase(),
+        name: dto.name.to_ascii_lowercase(),
         description: dto.description,
     }))
 }
