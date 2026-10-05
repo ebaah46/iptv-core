@@ -90,7 +90,10 @@ impl Store for FileStore {
                 let _ = table.remove(key);
             }
             if let Err(e) = writer.commit() {
-                info!("FileStore - evict - failed to remove cache item:{}", key);
+                info!(
+                    "FileStore - evict - failed to remove cache item:{}, error: {}",
+                    key, e
+                );
             }
         }
     }
