@@ -1,5 +1,6 @@
 use crate::domain::{Categories, Channel, Channels, Countries, Languages};
 use crate::services::CatalogRepository;
+use log::info;
 use std::sync::Arc;
 
 /**
@@ -116,6 +117,7 @@ impl CatalogService for IptvCatalogService {
     }
 
     fn get_active_channels(&self) -> Channels {
+        info!("Total active channels:{}", self.inner.get_channels().len());
         self.inner
             .get_channels()
             .into_iter()
