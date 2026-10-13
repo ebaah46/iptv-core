@@ -25,8 +25,15 @@ pub trait CatalogRepository: Debug + Send + Sync {
     /// Get all the feeds associated with a channel
     fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds>;
 
-    /// Get all streams associated with a given channel
+    /// Get the streams associated with a given channel and feed. A `None` (or empty)
+    /// feed id selects the streams that are not tied to any feed.
     fn get_candidate_streams(&self, channel_id: &str, feed_id: Option<&str>) -> Option<Streams>;
+
+    /// Get every stream associated with a given channel, regardless of feed.
+    fn get_streams_by_channel(&self, channel_id: &str) -> Option<Streams>;
+
+    /// Whether at least one stream exists for the channel, regardless of feed.
+    fn has_streams(&self, channel_id: &str) -> bool;
 
     /// Retrieve all categories of channels available
     fn get_categories(&self) -> Categories;
@@ -51,7 +58,8 @@ pub struct IptvCatalogRepository {
     data_source: Arc<dyn ChannelDataSource>,
     channels: RwLock<HashMap<String, Arc<Channel>>>,
     feeds_by_channel: RwLock<HashMap<String, Feeds>>,
-    streams_by_key: RwLock<HashMap<(String, Option<String>), Streams>>,
+    /// Streams grouped by channel id, then by feed id (`None` for feedless streams).
+    streams_by_channel: RwLock<HashMap<String, HashMap<Option<String>, Streams>>>,
     categories: RwLock<Categories>,
     countries: RwLock<Countries>,
     languages: RwLock<Languages>,
@@ -64,7 +72,7 @@ impl IptvCatalogRepository {
             data_source,
             channels: Default::default(),
             feeds_by_channel: Default::default(),
-            streams_by_key: Default::default(),
+            streams_by_channel: Default::default(),
             categories: Default::default(),
             countries: Default::default(),
             languages: Default::default(),
@@ -136,11 +144,21 @@ impl CatalogRepository for IptvCatalogRepository {
     }
 
     fn get_candidate_streams(&self, channel_id: &str, feed_id: Option<&str>) -> Option<Streams> {
-        let read_guard = self.streams_by_key.read();
+        let read_guard = self.streams_by_channel.read();
         // Normalize: treat Some("") the same as None so reads align
         // with the feed side which stores empty feed_id as None.
         let feed_key = feed_id.filter(|s| !s.is_empty()).map(|s| s.into());
-        read_guard.get(&(channel_id.into(), feed_key)).cloned()
+        read_guard.get(channel_id)?.get(&feed_key).cloned()
+    }
+
+    fn get_streams_by_channel(&self, channel_id: &str) -> Option<Streams> {
+        let read_guard = self.streams_by_channel.read();
+        let streams_by_feed = read_guard.get(channel_id)?;
+        Some(streams_by_feed.values().flatten().cloned().collect())
+    }
+
+    fn has_streams(&self, channel_id: &str) -> bool {
+        self.streams_by_channel.read().contains_key(channel_id)
     }
 
     fn get_categories(&self) -> Categories {
@@ -179,19 +197,22 @@ impl CatalogRepository for IptvCatalogRepository {
         }
 
         if let Ok(()) = self.cache.save_streams(&snapshot.streams) {
-            let mut streams_by_key: HashMap<(String, Option<String>), Streams> = HashMap::new();
+            let mut streams_by_channel: HashMap<String, HashMap<Option<String>, Streams>> =
+                HashMap::new();
             for stream in snapshot.streams {
                 let feed_key = if stream.feed_id.is_empty() {
                     None
                 } else {
                     Some(stream.feed_id.clone())
                 };
-                streams_by_key
-                    .entry((stream.channel_id.clone(), feed_key))
+                streams_by_channel
+                    .entry(stream.channel_id.clone())
+                    .or_default()
+                    .entry(feed_key)
                     .or_default()
                     .push(stream);
             }
-            *self.streams_by_key.write() = streams_by_key;
+            *self.streams_by_channel.write() = streams_by_channel;
         }
 
         if let Ok(()) = self.cache.save_categories(&snapshot.categories) {
@@ -699,6 +720,125 @@ mod tests {
     }
 
     #[test]
+    fn has_streams_is_true_for_channel_with_feed_streams() {
+        let data_source = MockDataSource {
+            streams: RwLock::new(vec![stream("ch1", "feed1")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert!(repository.has_streams("ch1"));
+    }
+
+    #[test]
+    fn has_streams_is_true_for_channel_with_only_feedless_streams() {
+        let data_source = MockDataSource {
+            streams: RwLock::new(vec![stream("ch1", "")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert!(repository.has_streams("ch1"));
+    }
+
+    #[test]
+    fn has_streams_is_false_for_channel_with_feeds_but_no_streams() {
+        let data_source = MockDataSource {
+            channels: RwLock::new(vec![channel("ch1"), channel("ch2")]),
+            feeds: RwLock::new(vec![feed("feed1", "ch1"), feed("feed2", "ch2")]),
+            streams: RwLock::new(vec![stream("ch2", "feed2")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert!(repository.get_feeds_by_channel("ch1").is_some());
+        assert!(!repository.has_streams("ch1"));
+        assert!(repository.has_streams("ch2"));
+    }
+
+    #[test]
+    fn has_streams_is_false_for_unknown_channel() {
+        let data_source = MockDataSource {
+            streams: RwLock::new(vec![stream("ch1", "feed1")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert!(!repository.has_streams("unknown"));
+    }
+
+    #[test]
+    fn has_streams_reflects_latest_refresh() {
+        let data_source = Arc::new(MockDataSource {
+            streams: RwLock::new(vec![stream("ch1", "feed1")]),
+            ..Default::default()
+        });
+        let repository =
+            IptvCatalogRepository::new(data_source.clone(), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+        assert!(repository.has_streams("ch1"));
+
+        *data_source.streams.write() = vec![stream("ch2", "feed2")];
+        repository.refresh();
+
+        assert!(!repository.has_streams("ch1"));
+        assert!(repository.has_streams("ch2"));
+    }
+
+    #[test]
+    fn get_streams_by_channel_returns_streams_across_all_feeds() {
+        let data_source = MockDataSource {
+            streams: RwLock::new(vec![
+                stream("ch1", ""),
+                stream("ch1", "feed1"),
+                stream("ch1", "feed2"),
+                stream("ch2", "feed1"),
+            ]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        let streams = repository
+            .get_streams_by_channel("ch1")
+            .expect("ch1 should have streams");
+        assert_eq!(streams.len(), 3);
+        assert!(streams.contains(&stream("ch1", "")));
+        assert!(streams.contains(&stream("ch1", "feed1")));
+        assert!(streams.contains(&stream("ch1", "feed2")));
+        assert!(!streams.contains(&stream("ch2", "feed1")));
+    }
+
+    #[test]
+    fn get_streams_by_channel_returns_none_for_unknown_channel() {
+        let data_source = MockDataSource {
+            streams: RwLock::new(vec![stream("ch1", "feed1")]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert!(repository.get_streams_by_channel("unknown").is_none());
+    }
+
+    #[test]
     fn refresh_skips_channels_when_cache_save_fails() {
         let data_source = MockDataSource {
             channels: RwLock::new(vec![channel("ch1")]),
@@ -748,6 +888,8 @@ mod tests {
                 .get_candidate_streams("ch1", Some("feed1"))
                 .is_none()
         );
+        assert!(!repository.has_streams("ch1"));
+        assert!(repository.get_streams_by_channel("ch1").is_none());
     }
 
     #[test]
