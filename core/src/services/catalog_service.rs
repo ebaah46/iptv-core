@@ -43,11 +43,8 @@ impl IptvCatalogService {
         Self { inner: registry }
     }
 
-    fn has_feeds(&self, channel: &str) -> bool {
-        self.inner
-            .get_feeds_by_channel(channel)
-            .map(|f| !f.is_empty())
-            .unwrap_or_default()
+    fn has_streams(&self, channel_id: &str) -> bool {
+        self.inner.has_streams(channel_id)
     }
 }
 
@@ -79,7 +76,7 @@ impl CatalogService for IptvCatalogService {
                     .category_ids
                     .iter()
                     .any(|id| id.contains(category_id))
-                    && self.has_feeds(&channel.id)
+                    && self.has_streams(&channel.id)
             })
             .collect()
     }
@@ -92,7 +89,7 @@ impl CatalogService for IptvCatalogService {
             .get_channels()
             .into_iter()
             .filter(|channel| {
-                channel.country_code.contains(&country_code) && self.has_feeds(&channel.id)
+                channel.country_code.contains(&country_code) && self.has_streams(&channel.id)
             })
             .collect()
     }
@@ -121,7 +118,7 @@ impl CatalogService for IptvCatalogService {
         self.inner
             .get_channels()
             .into_iter()
-            .filter(|channel| self.has_feeds(&channel.id))
+            .filter(|channel| self.has_streams(&channel.id))
             .collect()
     }
 
@@ -145,17 +142,20 @@ impl CatalogService for IptvCatalogService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Categories, Channel, Countries, Country, Feeds, Languages, Streams};
+    use crate::domain::{
+        Categories, Channel, Countries, Country, Feeds, Languages, Stream, Streams,
+    };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Test double for `CatalogRepository` that only supplies the data the
-    /// service reads (channels and feeds). The remaining repository methods
+    /// service reads (channels, feeds, streams and countries). The remaining repository methods
     /// are stubbed out because the service under test never calls them.
     #[derive(Debug)]
     struct MockCatalogRepository {
         channels: Channels,
         feeds_by_channel: HashMap<String, Feeds>,
+        streams_by_channel: HashMap<String, Streams>,
         languages: Languages,
         categories: Categories,
         countries: Countries,
@@ -167,6 +167,7 @@ mod tests {
             Self {
                 channels: vec![],
                 feeds_by_channel: HashMap::new(),
+                streams_by_channel: HashMap::new(),
                 languages: vec![],
                 categories: vec![],
                 countries: vec![],
@@ -180,6 +181,7 @@ mod tests {
             Self {
                 channels,
                 feeds_by_channel: HashMap::new(),
+                streams_by_channel: HashMap::new(),
                 languages: vec![],
                 categories: vec![],
                 countries: vec![],
@@ -192,38 +194,26 @@ mod tests {
             self
         }
 
-        fn with_feeds_for_channel(mut self, channel_id: &str) -> Self {
-            use crate::domain::Feed;
-            self.feeds_by_channel.insert(
+        fn with_streams_for_channel(mut self, channel_id: &str) -> Self {
+            self.streams_by_channel.insert(
                 channel_id.to_string(),
-                vec![Arc::new(Feed {
-                    id: format!("{}_feed", channel_id),
+                vec![Arc::new(Stream {
                     channel_id: channel_id.to_string(),
-                    name: "".to_string(),
-                    broadcast_codes: vec![],
-                    language_codes: vec![],
-                    is_main: false,
+                    feed_id: String::new(),
+                    url: format!("https://example.com/{}.m3u8", channel_id),
+                    quality: String::new(),
+                    referrer: String::new(),
+                    title: String::new(),
+                    user_agent: String::new(),
                 })],
             );
             self
         }
 
-        fn with_feeds_for_channels(mut self, channel_ids: &[&str]) -> Self {
-            use crate::domain::Feed;
-            for channel_id in channel_ids {
-                self.feeds_by_channel.insert(
-                    channel_id.to_string(),
-                    vec![Arc::new(Feed {
-                        id: format!("{}_feed", channel_id),
-                        channel_id: channel_id.to_string(),
-                        name: "".to_string(),
-                        broadcast_codes: vec![],
-                        language_codes: vec![],
-                        is_main: false,
-                    })],
-                );
-            }
-            self
+        fn with_streams_for_channels(self, channel_ids: &[&str]) -> Self {
+            channel_ids
+                .iter()
+                .fold(self, |repo, channel_id| repo.with_streams_for_channel(channel_id))
         }
     }
 
@@ -246,6 +236,16 @@ mod tests {
             _feed_id: Option<&str>,
         ) -> Option<Streams> {
             None
+        }
+
+        fn get_streams_by_channel(&self, channel_id: &str) -> Option<Streams> {
+            self.streams_by_channel.get(channel_id).cloned()
+        }
+
+        fn has_streams(&self, channel_id: &str) -> bool {
+            self.streams_by_channel
+                .get(channel_id)
+                .is_some_and(|streams| !streams.is_empty())
         }
 
         fn get_categories(&self) -> Categories {
@@ -317,7 +317,7 @@ mod tests {
                 channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
                 channel_with("cnn", "CNN", vec![], vec![], "US"),
             ])
-            .with_feeds_for_channels(&["bbc1", "cnn"]),
+            .with_streams_for_channels(&["bbc1", "cnn"]),
         );
 
         svc.refresh();
@@ -336,7 +336,7 @@ mod tests {
                 channel_with("bbc1", "bbc one", vec![], vec![], "GB"),
                 channel_with("cnn", "cnn", vec![], vec![], "US"),
             ])
-            .with_feeds_for_channels(&["bbc1", "cnn"]),
+            .with_streams_for_channels(&["bbc1", "cnn"]),
         );
         let result = svc.search("BBC");
         assert_eq!(result.len(), 1);
@@ -353,7 +353,7 @@ mod tests {
                 vec![],
                 "US",
             )])
-            .with_feeds_for_channel("cnn"),
+            .with_streams_for_channel("cnn"),
         );
 
         let result = svc.search("Cable News");
@@ -369,7 +369,7 @@ mod tests {
                 channel_with("bbc1", "bbc one", vec!["bbc1"], vec![], "GB"),
                 channel_with("bbcworld", "bbc world", vec![], vec![], "GB"),
             ])
-            .with_feeds_for_channels(&["bbc1", "bbcworld"]),
+            .with_streams_for_channels(&["bbc1", "bbcworld"]),
         );
 
         let result = svc.search("bbc");
@@ -387,7 +387,7 @@ mod tests {
                 vec![],
                 "US",
             )])
-            .with_feeds_for_channel("disc"),
+            .with_streams_for_channel("disc"),
         );
 
         let result = svc.search("discovery");
@@ -400,7 +400,7 @@ mod tests {
     fn search_returns_empty_when_no_match() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
-                .with_feeds_for_channel("bbc1"),
+                .with_streams_for_channel("bbc1"),
         );
 
         assert!(svc.search("xyzzy").is_empty());
@@ -413,7 +413,7 @@ mod tests {
                 channel_with("news24", "news24", vec![], vec!["sports"], "US"),
                 channel_with("lateshow", "late show", vec![], vec!["sports"], "US"),
             ])
-            .with_feeds_for_channels(&["news24", "lateshow"]),
+            .with_streams_for_channels(&["news24", "lateshow"]),
         );
 
         // Category ids and country codes must not leak into search results.
@@ -427,7 +427,7 @@ mod tests {
     fn search_with_empty_or_whitespace_query_returns_empty() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
-                .with_feeds_for_channel("bbc1"),
+                .with_streams_for_channel("bbc1"),
         );
         assert!(svc.search("").is_empty());
         assert!(svc.search("   ").is_empty());
@@ -441,7 +441,7 @@ mod tests {
                 channel_with("news24", "news24", vec![], vec![], "GB"),
                 channel_with("sportsnews", "sports news", vec![], vec![], "GB"),
             ])
-            .with_feeds_for_channels(&["news", "news24", "sportsnews"]),
+            .with_streams_for_channels(&["news", "news24", "sportsnews"]),
         );
 
         let result = svc.search("news");
@@ -456,7 +456,7 @@ mod tests {
                 channel_with("bbc1", "bbc one", vec![], vec!["news"], "GB"),
                 channel_with("mov1", "movie one", vec![], vec!["movies"], "US"),
             ])
-            .with_feeds_for_channels(&["bbc1", "mov1"]),
+            .with_streams_for_channels(&["bbc1", "mov1"]),
         );
 
         let result = svc.filter_by_category_id("news");
@@ -475,7 +475,7 @@ mod tests {
                 vec!["news", "sports"],
                 "GB",
             )])
-            .with_feeds_for_channel("bbc1"),
+            .with_streams_for_channel("bbc1"),
         );
 
         let result = svc.filter_by_category_id("sports");
@@ -494,7 +494,7 @@ mod tests {
                 vec!["news"],
                 "GB",
             )])
-            .with_feeds_for_channel("bbc1"),
+            .with_streams_for_channel("bbc1"),
         );
 
         assert!(svc.filter_by_category_id("movies").is_empty());
@@ -510,7 +510,7 @@ mod tests {
                 vec!["news"],
                 "GB",
             )])
-            .with_feeds_for_channel("bbc1"),
+            .with_streams_for_channel("bbc1"),
         );
 
         assert!(svc.filter_by_category_id("").is_empty());
@@ -524,7 +524,7 @@ mod tests {
                 channel_with("sky1", "Sky News", vec![], vec!["news"], "GB"),
                 channel_with("mov1", "Movie One", vec![], vec!["movies"], "US"),
             ])
-            .with_feeds_for_channels(&["bbc1", "sky1", "mov1"]),
+            .with_streams_for_channels(&["bbc1", "sky1", "mov1"]),
         );
 
         let result = svc.filter_by_category_id("news");
@@ -540,7 +540,7 @@ mod tests {
                 channel_with("gb1", "GB One", vec![], vec![], "GB"),
                 channel_with("de1", "DE One", vec![], vec![], "DE"),
             ])
-            .with_feeds_for_channels(&["us1", "gb1", "de1"]),
+            .with_streams_for_channels(&["us1", "gb1", "de1"]),
         );
 
         let result = svc.filter_by_country("US");
@@ -556,7 +556,7 @@ mod tests {
                 channel_with("us1", "US One", vec![], vec![], "US"),
                 channel_with("gb1", "GB One", vec![], vec![], "GB"),
             ])
-            .with_feeds_for_channels(&["us1", "gb1"]),
+            .with_streams_for_channels(&["us1", "gb1"]),
         );
 
         assert!(svc.filter_by_country("FR").is_empty());
@@ -566,7 +566,7 @@ mod tests {
     fn filter_by_country_with_empty_string_returns_empty() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_feeds_for_channel("us1"),
+                .with_streams_for_channel("us1"),
         );
 
         assert!(svc.filter_by_country("").is_empty());
@@ -580,7 +580,7 @@ mod tests {
                 channel_with("sky1", "Sky News", vec![], vec![], "GB"),
                 channel_with("bbc1", "BBC One", vec![], vec![], "GB"),
             ])
-            .with_feeds_for_channels(&["us1", "sky1", "bbc1"]),
+            .with_streams_for_channels(&["us1", "sky1", "bbc1"]),
         );
 
         let result = svc.filter_by_country("GB");
@@ -598,7 +598,7 @@ mod tests {
                 channel_with("d", "D", vec![], vec![], "FR"),
                 channel_with("e", "E", vec![], vec![], "US"),
             ])
-            .with_feeds_for_channels(&["a", "b", "c", "d", "e"]),
+            .with_streams_for_channels(&["a", "b", "c", "d", "e"]),
         );
 
         let result = svc.filter_by_country("US");
@@ -620,7 +620,7 @@ mod tests {
                 country_with("GB", "United Kingdom", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
             ])
-            .with_feeds_for_channels(&["us1", "us2", "gb1"]),
+            .with_streams_for_channels(&["us1", "us2", "gb1"]),
         );
 
         svc.refresh();
@@ -644,7 +644,7 @@ mod tests {
                 country_with("GB", "United Kingdom", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
             ])
-            .with_feeds_for_channels(&["us1", "gb1"]),
+            .with_streams_for_channels(&["us1", "gb1"]),
         );
 
         svc.refresh();
@@ -666,7 +666,7 @@ mod tests {
                 country_with("CA", "Canada", &["en".into(), "fr".into()]),
                 country_with("US", "United States", &["en".into()]),
             ])
-            .with_feeds_for_channels(&["ca1", "us1"]),
+            .with_streams_for_channels(&["ca1", "us1"]),
         );
 
         svc.refresh();
@@ -689,7 +689,7 @@ mod tests {
                 country_with("DE", "Germany", &["de".into()]),
                 country_with("FR", "France", &["fr".into()]),
             ])
-            .with_feeds_for_channels(&["us1", "de1"]),
+            .with_streams_for_channels(&["us1", "de1"]),
         );
 
         svc.refresh();
@@ -705,7 +705,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "us one", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "united states", &["en".into()])])
-                .with_feeds_for_channel("us1"),
+                .with_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -721,7 +721,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["en".into()])])
-                .with_feeds_for_channel("us1"),
+                .with_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -734,7 +734,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["en".into()])])
-                .with_feeds_for_channel("us1"),
+                .with_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -750,7 +750,7 @@ mod tests {
                 channel_with("us2", "US Two", vec![], vec![], "US"),
             ])
             .with_countries(vec![country_with("US", "United States", &["en".into()])])
-            .with_feeds_for_channels(&["us1", "us2"]),
+            .with_streams_for_channels(&["us1", "us2"]),
         );
 
         svc.refresh();
@@ -771,7 +771,7 @@ mod tests {
                 country_with("CA", "Canada", &["en".into(), "fr".into()]),
                 country_with("US", "United States", &["en".into()]),
             ])
-            .with_feeds_for_channels(&["ca1", "us1"]),
+            .with_streams_for_channels(&["ca1", "us1"]),
         );
 
         svc.refresh();
@@ -780,5 +780,34 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "ca1");
+    }
+#[test]
+    fn channels_with_feeds_but_no_streams_are_excluded_from_filtering() {
+        // Channel with feeds but NO streams should be excluded from filters
+        // that previously checked `has_feeds` but now check `has_streams`.
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("bbc1", "BBC One", vec![], vec!["news"], "GB"),
+                channel_with("cnn", "CNN", vec![], vec![], "US"),
+            ])
+            // Only cnn has streams; bbc1 has no streams.
+            .with_streams_for_channel("cnn"),
+        );
+
+        // `filter_by_category_id` — bbc1 has category "news" but no streams, so excluded.
+        let by_cat = svc.filter_by_category_id("news");
+        assert!(by_cat.is_empty(), "bbc1 has feeds but no streams → excluded");
+
+        // `filter_by_country` — bbc1 has country GB but no streams, so excluded.
+        let by_country = svc.filter_by_country("GB");
+        assert!(
+            by_country.is_empty(),
+            "bbc1 has country GB but no streams → excluded"
+        );
+
+        // `get_active_channels` — only channels with streams are active.
+        let active = svc.get_active_channels();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, "cnn");
     }
 }

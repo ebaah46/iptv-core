@@ -67,13 +67,43 @@ impl StreamResolver for IptvStreamResolver {
 mod tests {
     use super::*;
     use crate::domain::{Categories, Channel, Channels, Countries, Feed, Feeds, Languages, Stream};
-    use std::sync::RwLock;
+    use std::collections::HashMap;
 
     /// Mock repository that provides controlled data for testing.
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     struct MockCatalogRepository {
-        feeds: RwLock<Vec<(String, Feeds)>>,
-        streams: RwLock<Vec<((String, Option<String>), Streams)>>,
+        feeds_by_channel: HashMap<String, Feeds>,
+        streams_by_channel: HashMap<String, HashMap<Option<String>, Streams>>,
+    }
+
+    impl Default for MockCatalogRepository {
+        fn default() -> Self {
+            Self {
+                feeds_by_channel: HashMap::new(),
+                streams_by_channel: HashMap::new(),
+            }
+        }
+    }
+
+    impl MockCatalogRepository {
+        fn with_feeds_for_channel(mut self, channel_id: &str, feeds: Feeds) -> Self {
+            self.feeds_by_channel.insert(channel_id.to_string(), feeds);
+            self
+        }
+
+        fn with_streams_for_channel(
+            mut self,
+            channel_id: &str,
+            feed_id: Option<&str>,
+            streams: Streams,
+        ) -> Self {
+            let feed_key = feed_id.map(|s| s.to_string());
+            self.streams_by_channel
+                .entry(channel_id.to_string())
+                .or_default()
+                .insert(feed_key, streams);
+            self
+        }
     }
 
     impl CatalogRepository for MockCatalogRepository {
@@ -86,11 +116,7 @@ mod tests {
         }
 
         fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds> {
-            let guard = self.feeds.read().unwrap();
-            guard
-                .iter()
-                .find(|(cid, _)| cid == channel_id)
-                .map(|(_, feeds)| feeds.clone())
+            self.feeds_by_channel.get(channel_id).cloned()
         }
 
         fn get_candidate_streams(
@@ -98,12 +124,21 @@ mod tests {
             channel_id: &str,
             feed_id: Option<&str>,
         ) -> Option<Streams> {
-            let guard = self.streams.read().unwrap();
             let feed_key = feed_id.map(|s| s.to_string());
-            guard
-                .iter()
-                .find(|((cid, fk), _)| cid == channel_id && *fk == feed_key)
-                .map(|(_, streams)| streams.clone())
+            self.streams_by_channel
+                .get(channel_id)?
+                .get(&feed_key)
+                .cloned()
+        }
+
+        fn get_streams_by_channel(&self, channel_id: &str) -> Option<Streams> {
+            self.streams_by_channel
+                .get(channel_id)
+                .map(|by_feed| by_feed.values().flatten().cloned().collect())
+        }
+
+        fn has_streams(&self, channel_id: &str) -> bool {
+            self.streams_by_channel.contains_key(channel_id)
         }
 
         fn get_categories(&self) -> Categories {
@@ -146,10 +181,8 @@ mod tests {
 
     #[test]
     fn channel_has_feeds_returns_true_when_feeds_exist() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![("ch1".to_string(), vec![feed("f1", "ch1")])]),
-            ..Default::default()
-        };
+        let catalog = MockCatalogRepository::default()
+            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         assert!(resolver.channel_has_feeds("ch1"));
@@ -157,10 +190,7 @@ mod tests {
 
     #[test]
     fn channel_has_feeds_returns_false_when_channel_has_empty_feeds() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![("ch1".to_string(), vec![])]),
-            ..Default::default()
-        };
+        let catalog = MockCatalogRepository::default();
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         assert!(!resolver.channel_has_feeds("ch1"));
@@ -168,10 +198,8 @@ mod tests {
 
     #[test]
     fn channel_has_feeds_returns_false_for_unknown_channel() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![("ch1".to_string(), vec![feed("f1", "ch1")])]),
-            ..Default::default()
-        };
+        let catalog = MockCatalogRepository::default()
+            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         assert!(!resolver.channel_has_feeds("unknown"));
@@ -179,22 +207,10 @@ mod tests {
 
     #[test]
     fn returns_all_streams_across_all_feeds_of_a_channel() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![(
-                "ch1".to_string(),
-                vec![feed("f1", "ch1"), feed("f2", "ch1")],
-            )]),
-            streams: RwLock::new(vec![
-                (
-                    ("ch1".to_string(), Some("f1".to_string())),
-                    vec![stream("ch1", "f1", "720p")],
-                ),
-                (
-                    ("ch1".to_string(), Some("f2".to_string())),
-                    vec![stream("ch1", "f2", "1080p")],
-                ),
-            ]),
-        };
+        let catalog = MockCatalogRepository::default()
+            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1"), feed("f2", "ch1")])
+            .with_streams_for_channel("ch1", Some("f1"), vec![stream("ch1", "f1", "720p")])
+            .with_streams_for_channel("ch1", Some("f2"), vec![stream("ch1", "f2", "1080p")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         let streams = resolver.get_candidate_streams("ch1");
@@ -217,10 +233,8 @@ mod tests {
 
     #[test]
     fn returns_empty_for_unknown_channel() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![("ch1".to_string(), vec![feed("f1", "ch1")])]),
-            ..Default::default()
-        };
+        let catalog = MockCatalogRepository::default()
+            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         let streams = resolver.get_candidate_streams("unknown");
@@ -230,19 +244,18 @@ mod tests {
 
     #[test]
     fn includes_streams_with_no_feed_association() {
-        let catalog = MockCatalogRepository {
-            feeds: RwLock::new(vec![("ch1".to_string(), vec![feed("f1", "ch1")])]),
-            streams: RwLock::new(vec![
-                (
-                    ("ch1".to_string(), None),
-                    vec![stream("ch1", "", "1080p"), stream("ch1", "", "720p")],
-                ),
-                (
-                    ("ch1".to_string(), Some("f1".to_string())),
-                    vec![stream("ch1", "f1", "480p")],
-                ),
-            ]),
-        };
+        let catalog = MockCatalogRepository::default()
+            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")])
+            .with_streams_for_channel(
+                "ch1",
+                None::<&str>,
+                vec![stream("ch1", "", "1080p"), stream("ch1", "", "720p")],
+            )
+            .with_streams_for_channel(
+                "ch1",
+                Some("f1"),
+                vec![stream("ch1", "f1", "480p")],
+            );
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         let streams = resolver.get_candidate_streams("ch1");
