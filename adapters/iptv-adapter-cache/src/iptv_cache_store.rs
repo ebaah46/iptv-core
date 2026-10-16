@@ -95,4 +95,14 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
             .get_item("iptv:programs")
             .with_context(|| "No known programs for key: iptv:programs")
     }
+
+    fn save_logos(&self, logos: &core::domain::logo::Logos) -> Res<()> {
+        self.store.save_item("iptv:logos", logos)
+    }
+
+    fn load_logos(&self) -> Res<core::domain::logo::Logos> {
+        self.store
+            .get_item("iptv:logos")
+            .with_context(|| "No known logos for key: iptv:logos")
+    }
 }

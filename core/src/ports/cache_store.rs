@@ -1,4 +1,4 @@
-use crate::domain::{Categories, Channels, Countries, Feeds, Languages, Programs, Streams};
+use crate::domain::{Categories, Channels, Countries, Feeds, Languages, Logos, Programs, Streams};
 use anyhow::Result as Res;
 use std::fmt::Debug;
 
@@ -51,4 +51,10 @@ pub trait CacheStore: Debug + Send + Sync {
 
     // Retrieved cached programs
     fn load_programs(&self) -> Res<Programs>;
+
+    // Cache logs data
+    fn save_logos(&self, logos: &Logos) -> Res<()>;
+
+    // Retrieve cached logos
+    fn load_logos(&self) -> Res<Logos>;
 }
