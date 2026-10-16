@@ -4,7 +4,7 @@ use crate::domain::feed::Feeds;
 use crate::domain::language::Languages;
 use crate::domain::program::Programs;
 use crate::domain::stream::Streams;
-use crate::domain::Channels;
+use crate::domain::{Channels, Logos};
 use anyhow::Result as Res;
 use std::fmt::Debug;
 
@@ -37,4 +37,7 @@ pub trait ChannelDataSource: Debug + Send + Sync {
 
     // Retrieves a list of categories for the provided channels
     fn fetch_categories(&self) -> Res<Categories>;
+
+    // Retrieves a list of logos for the channels
+    fn fetch_logos(&self) -> Res<Logos>;
 }
