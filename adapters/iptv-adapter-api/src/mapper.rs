@@ -1,6 +1,6 @@
-use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
+use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, LogoDTO, StreamDTO};
 use chrono::NaiveDate;
-use core::domain::{Category, Channel, Country, Feed, Language, Stream};
+use core::domain::{Category, Channel, Country, Feed, Language, Logo, Stream};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -71,5 +71,15 @@ pub fn map_category_dto(dto: CategoryDTO) -> Option<Arc<Category>> {
         id: dto.id.to_ascii_lowercase(),
         name: dto.name.to_ascii_lowercase(),
         description: dto.description,
+    }))
+}
+
+pub fn map_logo_dto(dto: LogoDTO) -> Option<Arc<Logo>> {
+    Some(Arc::new(Logo {
+        channel: dto.channel.to_ascii_lowercase(),
+        format: dto.format.to_ascii_lowercase(),
+        url: dto.url,
+        width: dto.width,
+        height: dto.height,
     }))
 }

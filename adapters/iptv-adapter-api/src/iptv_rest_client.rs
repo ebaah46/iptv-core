@@ -1,5 +1,5 @@
 use crate::HttpClient;
-use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, StreamDTO};
+use crate::dto::{CategoryDTO, ChannelDTO, CountryDTO, FeedDTO, LanguageDTO, LogoDTO, StreamDTO};
 use anyhow::Result as Res;
 use core::domain::{
     Categories, channel::Channels, country::Countries, feed::Feeds, language::Languages,
@@ -82,13 +82,22 @@ impl ChannelDataSource for IptvRestClient {
     fn fetch_guides(&self) -> Res<Programs> {
         todo!()
     }
+
+    fn fetch_logos(&self) -> Res<core::domain::logo::Logos> {
+        let path = "/logos.json";
+        let query: Option<&()> = None;
+        let logos = self
+            .client
+            .get_stream(path, query, |dto: LogoDTO| crate::mapper::map_logo_dto(dto))?;
+        Ok(logos)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use core::domain::{Channel, Country, Feed, Language, Stream};
+    use core::domain::{Channel, Country, Feed, Language, Logo, Stream};
     use httpmock::MockServer;
     use httpmock::prelude::{GET, Method};
     use serde_json::{Value, json};
@@ -281,6 +290,39 @@ mod tests {
             vec![Arc::new(Language {
                 code: "fr".to_string(),
                 name: "French".to_string(),
+            })]
+        );
+    }
+
+    #[test]
+    fn test_fetch_logos_success() {
+        let server = TestServer::start();
+        server.register_resource(
+            "/logos.json",
+            GET,
+            json!([{
+                "channel": "002RadioTV.do",
+                "feed": null,
+                "in_use": true,
+                "tags": [],
+                "width": 334,
+                "height": 210,
+                "format": "PNG",
+                "url": "https://i.imgur.com/7oNe8xj.png"
+            }]),
+        );
+
+        let client = IptvRestClient::new(server.base_url());
+        let logos = client.fetch_logos().unwrap();
+
+        assert_eq!(
+            logos,
+            vec![Arc::new(Logo {
+                channel: "002radiotv.do".to_string(),
+                format: "png".to_string(),
+                url: "https://i.imgur.com/7oNe8xj.png".to_string(),
+                width: 334,
+                height: 210,
             })]
         );
     }
