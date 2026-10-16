@@ -37,7 +37,7 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
         self.store.save_item("iptv:feeds", feeds)
     }
 
-    fn load_feeds(&self) -> anyhow::Result<core::domain::feed::Feeds> {
+    fn load_feeds(&self) -> Res<core::domain::feed::Feeds> {
         self.store
             .get_item("iptv:feeds")
             .with_context(|| "No known feeds for given key:iptv:feeds")
@@ -47,20 +47,17 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
         self.store.save_item("iptv:streams", streams)
     }
 
-    fn load_streams(&self) -> anyhow::Result<core::domain::stream::Streams> {
+    fn load_streams(&self) -> Res<core::domain::stream::Streams> {
         self.store
             .get_item("iptv:streams")
             .with_context(|| "No know streams for given key:iptv:streams")
     }
 
-    fn save_categories(
-        &self,
-        categories: &core::domain::category::Categories,
-    ) -> anyhow::Result<()> {
+    fn save_categories(&self, categories: &core::domain::category::Categories) -> Res<()> {
         self.store.save_item("iptv:categories", categories)
     }
 
-    fn load_categories(&self) -> anyhow::Result<core::domain::category::Categories> {
+    fn load_categories(&self) -> Res<core::domain::category::Categories> {
         self.store
             .get_item("iptv:categories")
             .with_context(|| "No known categories for given key: iptv:categories")
@@ -70,7 +67,7 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
         self.store.save_item("iptv:countries", countries)
     }
 
-    fn load_countries(&self) -> anyhow::Result<core::domain::country::Countries> {
+    fn load_countries(&self) -> Res<core::domain::country::Countries> {
         self.store
             .get_item("iptv:countries")
             .with_context(|| "No known countries for key: iptv:countries")
@@ -80,7 +77,7 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
         self.store.save_item("iptv:languages", languages)
     }
 
-    fn load_languages(&self) -> anyhow::Result<core::domain::language::Languages> {
+    fn load_languages(&self) -> Res<core::domain::language::Languages> {
         self.store
             .get_item("iptv:languages")
             .with_context(|| "No known languages for given key:iptv:languages")
@@ -90,7 +87,7 @@ impl<S: Store> CacheStore for IptvCacheStore<S> {
         self.store.save_item("iptv:programs", programs)
     }
 
-    fn load_programs(&self) -> anyhow::Result<core::domain::program::Programs> {
+    fn load_programs(&self) -> Res<core::domain::program::Programs> {
         self.store
             .get_item("iptv:programs")
             .with_context(|| "No known programs for key: iptv:programs")
