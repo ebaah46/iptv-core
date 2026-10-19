@@ -77,7 +77,10 @@ pub fn map_category_dto(dto: CategoryDTO) -> Option<Arc<Category>> {
 pub fn map_logo_dto(dto: LogoDTO) -> Option<Arc<Logo>> {
     Some(Arc::new(Logo {
         channel: dto.channel.to_ascii_lowercase(),
-        format: dto.format.to_ascii_lowercase(),
+        format: dto
+            .format
+            .map(|f| f.to_ascii_lowercase())
+            .unwrap_or_default(),
         url: dto.url,
         width: dto.width,
         height: dto.height,

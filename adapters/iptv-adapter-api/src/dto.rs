@@ -79,7 +79,7 @@ pub struct ProgramDTO {
 #[derive(Debug, Deserialize)]
 pub struct LogoDTO {
     pub channel: String,
-    pub format: String,
+    pub format: Option<String>,
     pub url: String,
     pub width: u32,
     pub height: u32,
