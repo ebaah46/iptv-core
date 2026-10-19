@@ -1,4 +1,4 @@
-use crate::domain::{Categories, Channel, Channels, Countries, Languages};
+use crate::domain::{Categories, Channels, Countries, Languages, Logos};
 use crate::services::CatalogRepository;
 use log::info;
 use std::sync::Arc;
@@ -27,6 +27,8 @@ pub trait CatalogService: Send + Sync {
     fn get_countries(&self) -> Countries;
 
     fn get_languages(&self) -> Languages;
+
+    fn get_logos(&self) -> Logos;
 
     fn refresh(&self);
     // Other filtering APIs will be provided as we go. But for not, this
@@ -134,6 +136,10 @@ impl CatalogService for IptvCatalogService {
         self.inner.get_languages()
     }
 
+    fn get_logos(&self) -> Logos {
+        self.inner.get_logos()
+    }
+
     fn refresh(&self) {
         self.inner.refresh();
     }
@@ -143,7 +149,7 @@ impl CatalogService for IptvCatalogService {
 mod tests {
     use super::*;
     use crate::domain::{
-        Categories, Channel, Countries, Country, Feeds, Languages, Logos, Stream, Streams,
+        Categories, Channel, Countries, Country, Feeds, Languages, Logo, Logos, Stream, Streams,
     };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -217,6 +223,11 @@ mod tests {
             channel_ids.iter().fold(self, |repo, channel_id| {
                 repo.with_streams_for_channel(channel_id)
             })
+        }
+
+        fn with_logos(mut self, logos: Logos) -> Self {
+            self.logos = logos;
+            self
         }
     }
 
@@ -303,6 +314,16 @@ mod tests {
             name: name.into(),
             languages: languages.into(),
             flag_url: "".to_string(),
+        })
+    }
+
+    fn logo_with(channel: &str, url: &str) -> Arc<Logo> {
+        Arc::new(Logo {
+            channel: channel.to_string(),
+            format: "".to_string(),
+            url: url.to_string(),
+            width: 0,
+            height: 0,
         })
     }
 
@@ -819,5 +840,37 @@ mod tests {
         let active = svc.get_active_channels();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].id, "cnn");
+    }
+
+    #[test]
+    fn get_logos_returns_all_logos() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("ch1", "Ch1", vec![], vec![], "US"),
+                channel_with("ch2", "Ch2", vec![], vec![], "GB"),
+            ])
+            .with_streams_for_channels(&["ch1", "ch2"])
+            .with_countries(vec![
+                country_with("US", "United States", &["en".into()]),
+                country_with("GB", "United Kingdom", &["en".into()]),
+            ])
+            // Add logos to the mock repository
+            .with_logos(vec![
+                logo_with("ch1", "https://ch1-logo.png"),
+                logo_with("ch2", "https://ch2-logo.jpg"),
+            ]),
+        );
+
+        let result = svc.get_logos();
+
+        assert_eq!(result.len(), 2);
+
+        assert_eq!(result[0].channel, "ch1");
+
+        assert_eq!(result[0].url, "https://ch1-logo.png");
+
+        assert_eq!(result[1].channel, "ch2");
+
+        assert_eq!(result[1].url, "https://ch2-logo.jpg");
     }
 }
