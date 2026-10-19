@@ -66,7 +66,9 @@ impl StreamResolver for IptvStreamResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Categories, Channel, Channels, Countries, Feed, Feeds, Languages, Stream};
+    use crate::domain::{
+        Categories, Channel, Channels, Countries, Feed, Feeds, Languages, Logos, Stream,
+    };
     use std::collections::HashMap;
 
     /// Mock repository that provides controlled data for testing.
@@ -150,6 +152,10 @@ mod tests {
         }
 
         fn get_languages(&self) -> Languages {
+            vec![]
+        }
+
+        fn get_logos(&self) -> Logos {
             vec![]
         }
 
