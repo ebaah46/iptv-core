@@ -143,7 +143,7 @@ impl CatalogService for IptvCatalogService {
 mod tests {
     use super::*;
     use crate::domain::{
-        Categories, Channel, Countries, Country, Feeds, Languages, Stream, Streams,
+        Categories, Channel, Countries, Country, Feeds, Languages, Logos, Stream, Streams,
     };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -157,6 +157,7 @@ mod tests {
         feeds_by_channel: HashMap<String, Feeds>,
         streams_by_channel: HashMap<String, Streams>,
         languages: Languages,
+        logos: Logos,
         categories: Categories,
         countries: Countries,
         refresh_count: AtomicUsize,
@@ -169,6 +170,7 @@ mod tests {
                 feeds_by_channel: HashMap::new(),
                 streams_by_channel: HashMap::new(),
                 languages: vec![],
+                logos: vec![],
                 categories: vec![],
                 countries: vec![],
                 refresh_count: AtomicUsize::new(0),
@@ -183,6 +185,7 @@ mod tests {
                 feeds_by_channel: HashMap::new(),
                 streams_by_channel: HashMap::new(),
                 languages: vec![],
+                logos: vec![],
                 categories: vec![],
                 countries: vec![],
                 refresh_count: AtomicUsize::new(0),
@@ -211,9 +214,9 @@ mod tests {
         }
 
         fn with_streams_for_channels(self, channel_ids: &[&str]) -> Self {
-            channel_ids
-                .iter()
-                .fold(self, |repo, channel_id| repo.with_streams_for_channel(channel_id))
+            channel_ids.iter().fold(self, |repo, channel_id| {
+                repo.with_streams_for_channel(channel_id)
+            })
         }
     }
 
@@ -258,6 +261,10 @@ mod tests {
 
         fn get_languages(&self) -> Languages {
             self.languages.clone()
+        }
+
+        fn get_logos(&self) -> Logos {
+            self.logos.clone()
         }
 
         fn refresh(&self) {
@@ -781,7 +788,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "ca1");
     }
-#[test]
+    #[test]
     fn channels_with_feeds_but_no_streams_are_excluded_from_filtering() {
         // Channel with feeds but NO streams should be excluded from filters
         // that previously checked `has_feeds` but now check `has_streams`.
@@ -796,7 +803,10 @@ mod tests {
 
         // `filter_by_category_id` — bbc1 has category "news" but no streams, so excluded.
         let by_cat = svc.filter_by_category_id("news");
-        assert!(by_cat.is_empty(), "bbc1 has feeds but no streams → excluded");
+        assert!(
+            by_cat.is_empty(),
+            "bbc1 has feeds but no streams → excluded"
+        );
 
         // `filter_by_country` — bbc1 has country GB but no streams, so excluded.
         let by_country = svc.filter_by_country("GB");
