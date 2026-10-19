@@ -1,7 +1,4 @@
-use crate::domain::{
-    Categories, Category, Channel, Channels, Countries, Country, Feed, Feeds, Language, Languages,
-    Stream, Streams,
-};
+use crate::domain::{Categories, Channel, Channels, Countries, Feeds, Languages, Logos, Streams};
 use crate::ports::{CacheStore, ChannelDataSource};
 use log::info;
 use parking_lot::RwLock;
@@ -44,6 +41,9 @@ pub trait CatalogRepository: Debug + Send + Sync {
     /// Retrieve all languages of channels available
     fn get_languages(&self) -> Languages;
 
+    /// Retrieve all logos of the channels available
+    fn get_logos(&self) -> Logos;
+
     /// Refresh or reload data from data sources
     fn refresh(&self);
 }
@@ -63,6 +63,7 @@ pub struct IptvCatalogRepository {
     categories: RwLock<Categories>,
     countries: RwLock<Countries>,
     languages: RwLock<Languages>,
+    logos: RwLock<Logos>,
 }
 
 impl IptvCatalogRepository {
@@ -76,20 +77,21 @@ impl IptvCatalogRepository {
             categories: Default::default(),
             countries: Default::default(),
             languages: Default::default(),
+            logos: Default::default(),
         }
     }
     fn fetch_catalog(&self) -> CatalogSnapShot {
         let source = &self.data_source;
 
-        let (channels, feeds, streams, categories, countries, languages) = std::thread::scope(
-            |s| {
+        let (channels, feeds, streams, categories, countries, languages, logos) =
+            std::thread::scope(|s| {
                 let channels = s.spawn(|| source.fetch_channels().unwrap_or_default());
                 let feeds = s.spawn(|| source.fetch_feeds().unwrap_or_default());
                 let streams = s.spawn(|| source.fetch_streams().unwrap_or_default());
                 let countries = s.spawn(|| source.fetch_countries().unwrap_or_default());
                 let categories = s.spawn(|| source.fetch_categories().unwrap_or_default());
                 let languages = s.spawn(|| source.fetch_languages().unwrap_or_default());
-
+                let logos = s.spawn(|| source.fetch_logos().unwrap_or_default());
                 (
                     channels.join().unwrap_or_else(|e| {
                         info!("IptvCatalogRepository - fetch_catalog - channels thread crashed unexpectedly:{:?}", e);
@@ -112,11 +114,15 @@ impl IptvCatalogRepository {
                         vec![]
                     }),
                     languages.join().unwrap_or_else(|e| {
-                        info!("IptvCatalogRepository - fetch_catalog - languages thread crashed unexpectedly:{:?}", e);                        vec![]
+                        info!("IptvCatalogRepository - fetch_catalog - languages thread crashed unexpectedly:{:?}", e);
+                        vec![]
                     }),
+                    logos.join().unwrap_or_else(|e| {
+                        info!("IptvCatalogRepository - fetch_catalog - logos thread crashed unexpectedly:{:?}", e);
+                        vec![]
+                    })
                 )
-            },
-        );
+            });
         CatalogSnapShot {
             channels,
             feeds,
@@ -124,6 +130,7 @@ impl IptvCatalogRepository {
             countries,
             categories,
             languages,
+            logos,
         }
     }
 }
@@ -173,6 +180,11 @@ impl CatalogRepository for IptvCatalogRepository {
 
     fn get_languages(&self) -> Languages {
         let read_guard = self.languages.read();
+        read_guard.clone()
+    }
+
+    fn get_logos(&self) -> Logos {
+        let read_guard = self.logos.read();
         read_guard.clone()
     }
 
@@ -226,6 +238,10 @@ impl CatalogRepository for IptvCatalogRepository {
         if let Ok(()) = self.cache.save_languages(&snapshot.languages) {
             *self.languages.write() = snapshot.languages;
         }
+
+        if let Ok(()) = self.cache.save_logos(&snapshot.logos) {
+            *self.logos.write() = snapshot.logos;
+        }
     }
 }
 
@@ -238,12 +254,13 @@ struct CatalogSnapShot {
     pub countries: Countries,
     pub categories: Categories,
     pub languages: Languages,
+    pub logos: Logos,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Category, Country, Feed, Language, Programs, Stream};
+    use crate::domain::{Category, Country, Feed, Language, Logo, Logos, Programs, Stream};
     use anyhow::Result as Res;
     use anyhow::anyhow;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -262,6 +279,7 @@ mod tests {
         categories: RwLock<Categories>,
         countries: RwLock<Countries>,
         languages: RwLock<Languages>,
+        logos: RwLock<Logos>,
     }
 
     impl ChannelDataSource for MockDataSource {
@@ -291,6 +309,10 @@ mod tests {
 
         fn fetch_categories(&self) -> Res<Categories> {
             Ok(self.categories.read().clone())
+        }
+
+        fn fetch_logos(&self) -> Res<Logos> {
+            Ok(self.logos.read().clone())
         }
     }
 
@@ -408,6 +430,14 @@ mod tests {
         fn load_programs(&self) -> Res<Programs> {
             Ok(vec![])
         }
+
+        fn save_logos(&self, logos: &Logos) -> Res<()> {
+            Ok(())
+        }
+
+        fn load_logos(&self) -> Res<Logos> {
+            Ok(vec![])
+        }
     }
 
     fn channel(id: &str) -> Arc<Channel> {
@@ -469,6 +499,16 @@ mod tests {
         Arc::new(Language {
             code: code.to_string(),
             name: name.to_string(),
+        })
+    }
+
+    fn logo(channel: &str, url: &str) -> Arc<Logo> {
+        Arc::new(Logo {
+            channel: channel.to_string(),
+            format: "".to_string(),
+            url: url.to_string(),
+            width: 0,
+            height: 0,
         })
     }
 
@@ -970,6 +1010,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn refresh_populates_logo() {
+        let data_source = MockDataSource {
+            logos: RwLock::new(vec![
+                logo("ch1", "https://ch1-logo.png"),
+                logo("ch2", "https://ch2-logo.jpg"),
+            ]),
+            ..Default::default()
+        };
+        let repository =
+            IptvCatalogRepository::new(Arc::new(data_source), Arc::new(MockCacheStore::default()));
+
+        repository.refresh();
+
+        assert_eq!(
+            repository.get_logos(),
+            vec![
+                logo("ch1", "https://ch1-logo.png"),
+                logo("ch2", "https://ch2-logo.jpg")
+            ]
+        );
+    }
     #[test]
     fn refresh_replaces_categories_on_second_call() {
         let data_source = Arc::new(MockDataSource {
