@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 authors = ["BEKs <ebaah72@gmail.com>"]
 license = "GPL-3"
@@ -27,3 +27,13 @@ postcard = { version = "1.1.3", features = ["alloc", "use-std"] }
 adapter-api = { path = "adapters/iptv-adapter-api" }
 adapter-cache = { path = "adapters/iptv-adapter-cache" }
 core = { path = "core" }
+
+[profile.release]
+debug = false             # Keeps debug symbols (maps hex addresses to function names)
+split-debuginfo = "packed" # Ensures symbols are generated into a format the profiler can grab
+strip = "none"           # Guarantees symbols aren't stripped later
+
+[profile.dev]
+debug = true             # Keeps debug symbols (maps hex addresses to function names)
+split-debuginfo = "packed" # Ensures symbols are generated into a format the profiler can grab
+strip = "none"           # Guarantees symbols aren't stripped later
