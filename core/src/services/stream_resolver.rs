@@ -31,25 +31,25 @@ impl IptvStreamResolver {
 
 impl StreamResolver for IptvStreamResolver {
     fn get_candidate_streams(&self, channel_id: &str) -> Streams {
-        let feeds = match self.catalog.get_feeds_by_channel(channel_id) {
-            Some(feeds) => feeds,
-            None => return vec![],
-        };
-
         let mut all_streams = Streams::new();
 
-        // Streams with None for feed section should be included
+        // Streams with no feeds should always be included, even when
+        // the channel has no feeds. This keeps `get_candidate_streams` aligned
+        // with `has_streams`/`get_active_channels`, which count a channel as
+        // playable purely based on the presence of stream rows.
         if let Some(streams) = self.catalog.get_candidate_streams(channel_id, None) {
             all_streams.extend(streams);
         }
 
-        // Include streams for each feed
-        for feed in &feeds {
-            if let Some(streams) = self
-                .catalog
-                .get_candidate_streams(channel_id, Some(&feed.id))
-            {
-                all_streams.extend(streams);
+        // Include streams for each feed, if the channel has any.
+        if let Some(feeds) = self.catalog.get_feeds_by_channel(channel_id) {
+            for feed in feeds {
+                if let Some(streams) = self
+                    .catalog
+                    .get_candidate_streams(channel_id, Some(&feed.id))
+                {
+                    all_streams.extend(streams);
+                }
             }
         }
 
@@ -187,8 +187,8 @@ mod tests {
 
     #[test]
     fn channel_has_feeds_returns_true_when_feeds_exist() {
-        let catalog = MockCatalogRepository::default()
-            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
+        let catalog =
+            MockCatalogRepository::default().with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         assert!(resolver.channel_has_feeds("ch1"));
@@ -204,8 +204,8 @@ mod tests {
 
     #[test]
     fn channel_has_feeds_returns_false_for_unknown_channel() {
-        let catalog = MockCatalogRepository::default()
-            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
+        let catalog =
+            MockCatalogRepository::default().with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         assert!(!resolver.channel_has_feeds("unknown"));
@@ -238,9 +238,27 @@ mod tests {
     }
 
     #[test]
+    fn returns_fieldless_streams_when_channel_has_no_feeds() {
+        // A channel with stream rows but NO feeds must still be resolvable, so
+        // it matches `has_streams`/`get_active_channels`. Previously the
+        // resolver bailed early on missing feeds and reported "no streams".
+        let catalog = MockCatalogRepository::default().with_streams_for_channel(
+            "ch1",
+            None::<&str>,
+            vec![stream("ch1", "", "1080p")],
+        );
+        let resolver = IptvStreamResolver::new(Arc::new(catalog));
+
+        let streams = resolver.get_candidate_streams("ch1");
+
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].quality, "1080p");
+    }
+
+    #[test]
     fn returns_empty_for_unknown_channel() {
-        let catalog = MockCatalogRepository::default()
-            .with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
+        let catalog =
+            MockCatalogRepository::default().with_feeds_for_channel("ch1", vec![feed("f1", "ch1")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         let streams = resolver.get_candidate_streams("unknown");
@@ -257,11 +275,7 @@ mod tests {
                 None::<&str>,
                 vec![stream("ch1", "", "1080p"), stream("ch1", "", "720p")],
             )
-            .with_streams_for_channel(
-                "ch1",
-                Some("f1"),
-                vec![stream("ch1", "f1", "480p")],
-            );
+            .with_streams_for_channel("ch1", Some("f1"), vec![stream("ch1", "f1", "480p")]);
         let resolver = IptvStreamResolver::new(Arc::new(catalog));
 
         let streams = resolver.get_candidate_streams("ch1");
