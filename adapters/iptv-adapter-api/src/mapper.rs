@@ -30,8 +30,8 @@ pub fn map_channel_dto(dto: ChannelDTO) -> Option<Arc<Channel>> {
 
 pub fn map_stream_dto(dto: StreamDTO) -> Option<Arc<Stream>> {
     Some(Arc::new(Stream {
-        channel_id: dto.channel.unwrap_or_default(),
-        feed_id: dto.feed.unwrap_or_default(),
+        channel_id: dto.channel.unwrap_or_default().to_ascii_lowercase(),
+        feed_id: dto.feed.unwrap_or_default().to_ascii_lowercase(),
         url: Some(dto.url).filter(|s| !s.is_empty())?,
         quality: dto.quality.unwrap_or_default(),
         referrer: dto.referrer.unwrap_or_default(),
