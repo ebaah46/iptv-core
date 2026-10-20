@@ -148,140 +148,8 @@ impl CatalogService for IptvCatalogService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        Categories, Channel, Countries, Country, Feeds, Languages, Logo, Logos, Stream, Streams,
-    };
-    use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    /// Test double for `CatalogRepository` that only supplies the data the
-    /// service reads (channels, feeds, streams and countries). The remaining repository methods
-    /// are stubbed out because the service under test never calls them.
-    #[derive(Debug)]
-    struct MockCatalogRepository {
-        channels: Channels,
-        feeds_by_channel: HashMap<String, Feeds>,
-        streams_by_channel: HashMap<String, Streams>,
-        languages: Languages,
-        logos: Logos,
-        categories: Categories,
-        countries: Countries,
-        refresh_count: AtomicUsize,
-    }
-
-    impl Default for MockCatalogRepository {
-        fn default() -> Self {
-            Self {
-                channels: vec![],
-                feeds_by_channel: HashMap::new(),
-                streams_by_channel: HashMap::new(),
-                languages: vec![],
-                logos: vec![],
-                categories: vec![],
-                countries: vec![],
-                refresh_count: AtomicUsize::new(0),
-            }
-        }
-    }
-
-    impl MockCatalogRepository {
-        fn new(channels: Channels) -> Self {
-            Self {
-                channels,
-                feeds_by_channel: HashMap::new(),
-                streams_by_channel: HashMap::new(),
-                languages: vec![],
-                logos: vec![],
-                categories: vec![],
-                countries: vec![],
-                refresh_count: AtomicUsize::new(0),
-            }
-        }
-
-        fn with_countries(mut self, countries: Countries) -> Self {
-            self.countries = countries;
-            self
-        }
-
-        fn with_streams_for_channel(mut self, channel_id: &str) -> Self {
-            self.streams_by_channel.insert(
-                channel_id.to_string(),
-                vec![Arc::new(Stream {
-                    channel_id: channel_id.to_string(),
-                    feed_id: String::new(),
-                    url: format!("https://example.com/{}.m3u8", channel_id),
-                    quality: String::new(),
-                    referrer: String::new(),
-                    title: String::new(),
-                    user_agent: String::new(),
-                })],
-            );
-            self
-        }
-
-        fn with_streams_for_channels(self, channel_ids: &[&str]) -> Self {
-            channel_ids.iter().fold(self, |repo, channel_id| {
-                repo.with_streams_for_channel(channel_id)
-            })
-        }
-
-        fn with_logos(mut self, logos: Logos) -> Self {
-            self.logos = logos;
-            self
-        }
-    }
-
-    impl CatalogRepository for MockCatalogRepository {
-        fn get_channels(&self) -> Channels {
-            self.channels.clone()
-        }
-
-        fn get_channel_by_id(&self, _channel_id: &str) -> Option<Arc<Channel>> {
-            None
-        }
-
-        fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds> {
-            self.feeds_by_channel.get(channel_id).cloned()
-        }
-
-        fn get_candidate_streams(
-            &self,
-            _channel_id: &str,
-            _feed_id: Option<&str>,
-        ) -> Option<Streams> {
-            None
-        }
-
-        fn get_streams_by_channel(&self, channel_id: &str) -> Option<Streams> {
-            self.streams_by_channel.get(channel_id).cloned()
-        }
-
-        fn has_streams(&self, channel_id: &str) -> bool {
-            self.streams_by_channel
-                .get(channel_id)
-                .is_some_and(|streams| !streams.is_empty())
-        }
-
-        fn get_categories(&self) -> Categories {
-            self.categories.clone()
-        }
-
-        fn get_countries(&self) -> Countries {
-            self.countries.clone()
-        }
-
-        fn get_languages(&self) -> Languages {
-            self.languages.clone()
-        }
-
-        fn get_logos(&self) -> Logos {
-            self.logos.clone()
-        }
-
-        fn refresh(&self) {
-            self.refresh_count.fetch_add(1, Ordering::SeqCst);
-        }
-    }
+    use crate::domain::{Channel, Country, Logo};
+    use crate::services::test_support::MockCatalogRepository;
 
     fn channel_with(
         id: &str,
@@ -331,11 +199,11 @@ mod tests {
     fn refresh_delegates_to_repository() {
         let repo = Arc::new(MockCatalogRepository::new(vec![]));
         let svc = IptvCatalogService::new(repo.clone());
-        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 0);
+        assert_eq!(repo.refresh_count(), 0);
         svc.refresh();
-        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 1);
+        assert_eq!(repo.refresh_count(), 1);
         svc.refresh();
-        assert_eq!(repo.refresh_count.load(Ordering::SeqCst), 2);
+        assert_eq!(repo.refresh_count(), 2);
     }
 
     #[test]
@@ -381,7 +249,7 @@ mod tests {
                 vec![],
                 "US",
             )])
-            .with_streams_for_channel("cnn"),
+            .with_feedless_streams_for_channel("cnn"),
         );
 
         let result = svc.search("Cable News");
@@ -415,7 +283,7 @@ mod tests {
                 vec![],
                 "US",
             )])
-            .with_streams_for_channel("disc"),
+            .with_feedless_streams_for_channel("disc"),
         );
 
         let result = svc.search("discovery");
@@ -428,7 +296,7 @@ mod tests {
     fn search_returns_empty_when_no_match() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
-                .with_streams_for_channel("bbc1"),
+                .with_feedless_streams_for_channel("bbc1"),
         );
 
         assert!(svc.search("xyzzy").is_empty());
@@ -455,7 +323,7 @@ mod tests {
     fn search_with_empty_or_whitespace_query_returns_empty() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("bbc1", "BBC One", vec![], vec![], "GB")])
-                .with_streams_for_channel("bbc1"),
+                .with_feedless_streams_for_channel("bbc1"),
         );
         assert!(svc.search("").is_empty());
         assert!(svc.search("   ").is_empty());
@@ -503,7 +371,7 @@ mod tests {
                 vec!["news", "sports"],
                 "GB",
             )])
-            .with_streams_for_channel("bbc1"),
+            .with_feedless_streams_for_channel("bbc1"),
         );
 
         let result = svc.filter_by_category_id("sports");
@@ -522,7 +390,7 @@ mod tests {
                 vec!["news"],
                 "GB",
             )])
-            .with_streams_for_channel("bbc1"),
+            .with_feedless_streams_for_channel("bbc1"),
         );
 
         assert!(svc.filter_by_category_id("movies").is_empty());
@@ -538,7 +406,7 @@ mod tests {
                 vec!["news"],
                 "GB",
             )])
-            .with_streams_for_channel("bbc1"),
+            .with_feedless_streams_for_channel("bbc1"),
         );
 
         assert!(svc.filter_by_category_id("").is_empty());
@@ -594,7 +462,7 @@ mod tests {
     fn filter_by_country_with_empty_string_returns_empty() {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
-                .with_streams_for_channel("us1"),
+                .with_feedless_streams_for_channel("us1"),
         );
 
         assert!(svc.filter_by_country("").is_empty());
@@ -733,7 +601,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "us one", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "united states", &["en".into()])])
-                .with_streams_for_channel("us1"),
+                .with_feedless_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -749,7 +617,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["en".into()])])
-                .with_streams_for_channel("us1"),
+                .with_feedless_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -762,7 +630,7 @@ mod tests {
         let svc = service(
             MockCatalogRepository::new(vec![channel_with("us1", "US One", vec![], vec![], "US")])
                 .with_countries(vec![country_with("US", "United States", &["en".into()])])
-                .with_streams_for_channel("us1"),
+                .with_feedless_streams_for_channel("us1"),
         );
 
         svc.refresh();
@@ -819,7 +687,7 @@ mod tests {
                 channel_with("cnn", "CNN", vec![], vec![], "US"),
             ])
             // Only cnn has streams; bbc1 has no streams.
-            .with_streams_for_channel("cnn"),
+            .with_feedless_streams_for_channel("cnn"),
         );
 
         // `filter_by_category_id` — bbc1 has category "news" but no streams, so excluded.
