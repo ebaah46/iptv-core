@@ -1,5 +1,3 @@
-#![feature(unboxed_closures)]
-
 pub mod client;
 mod dto;
 pub mod iptv_rest_client;
