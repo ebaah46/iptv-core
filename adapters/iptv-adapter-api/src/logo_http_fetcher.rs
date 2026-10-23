@@ -11,7 +11,8 @@ pub struct LogoHttpFetcher {
 }
 
 impl LogoHttpFetcher {
-    pub fn new(client: Arc<HttpClient>) -> Self {
+    pub fn new() -> Self {
+        let client = Arc::new(HttpClient::default());
         Self { client }
     }
 
