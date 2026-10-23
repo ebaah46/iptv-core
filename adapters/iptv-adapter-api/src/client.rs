@@ -1,9 +1,9 @@
-use anyhow::{bail, Context, Result as Res};
+use anyhow::{Context, Result as Res, bail};
 use log::{error, info};
-use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::Method;
-use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
+use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::Serialize;
+use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::io::BufReader;
@@ -15,7 +15,7 @@ use std::time::Duration;
 * This client is responsible for providing the actually making the API request
 * to the IPTV provider for the catalog data.
 */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HttpClient {
     base_url: String,
     client: Arc<Client>,
@@ -127,6 +127,24 @@ impl HttpClient {
         }
         Ok(transformed_collection)
     }
+
+    ///  Retrieve raw bytes from a given url
+    pub fn get_raw<P>(&self, path: P) -> Res<Vec<u8>>
+    where
+        P: Into<String>,
+    {
+        let req = self.build_request("GET", &path.into());
+        let response = req.send().context("Failed to send GET request")?;
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().unwrap_or_default();
+            bail!("Raw API returned error status {}: {}", status, error_body);
+        }
+        let bytes = response
+            .bytes()
+            .context("Failed to read raw response body")?;
+        Ok(bytes.to_vec())
+    }
 }
 
 /**
@@ -173,10 +191,10 @@ where
 #[cfg(test)]
 mod tests {
     use crate::client::HttpClient;
-    use httpmock::prelude::{Method, GET};
     use httpmock::MockServer;
+    use httpmock::prelude::{GET, Method};
     use serde::{Deserialize, Serialize};
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     struct TestServer {
         pub server: MockServer,
@@ -335,5 +353,20 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn test_get_raw_returns_response_body_bytes() {
+        let server = TestServer::start();
+        server.server.mock(|when, then| {
+            when.method(GET).path("/raw.bin");
+            then.status(200).body("raw-bytes");
+        });
+        let base_url = format!("http://{}", server.server.address());
+        let client = HttpClient::new(base_url);
+
+        let bytes = client.get_raw("/raw.bin").unwrap();
+
+        assert_eq!(bytes.as_slice(), b"raw-bytes");
     }
 }
