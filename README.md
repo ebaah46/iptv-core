@@ -58,6 +58,33 @@ let channels = facade.get_catalog().search("news");
 facade.play( & channel_id);
 ```
 
+### Combined catalog queries
+
+`CatalogQuery` combines search, country, language, and category filters into a
+single pass over the catalog. Category matching supports all, any, or none of
+the selected categories:
+
+```rust
+use core::{CatalogQuery, CategoryMatch};
+
+let channels = facade.query_catalog(
+    &CatalogQuery::new()
+        .search("news")
+        .country("US")
+        .language("en")
+        .categories(["news", "sports"])
+        .category_match(CategoryMatch::Any),
+);
+```
+
+- `CategoryMatch::All` — a channel must have every selected category.
+- `CategoryMatch::Any` — a channel must have at least one selected category.
+- `CategoryMatch::None` — a channel must have none of the selected categories.
+
+An empty category selection applies no category filter. Queries return only
+active channels by default; use `.active_only(false)` to include channels
+without streams.
+
 ## Building
 
 ```
