@@ -1,4 +1,5 @@
-use crate::services::{CatalogService, PlaybackController};
+use crate::domain::Channels;
+use crate::services::{CatalogQuery, CatalogService, PlaybackController};
 use std::sync::Arc;
 
 /**
@@ -8,6 +9,9 @@ use std::sync::Arc;
 */
 pub trait CoreFacade {
     fn get_catalog_service(&self) -> Arc<dyn CatalogService>;
+
+    /// Runs a combined catalog query through the catalog service.
+    fn query_catalog(&self, query: &CatalogQuery) -> Channels;
 
     fn play(&self, channel_id: &str);
 
@@ -34,6 +38,10 @@ impl IptvFacade {
 impl CoreFacade for IptvFacade {
     fn get_catalog_service(&self) -> Arc<dyn CatalogService> {
         self.catalog_service.clone()
+    }
+
+    fn query_catalog(&self, query: &CatalogQuery) -> Channels {
+        self.catalog_service.query(query)
     }
 
     fn play(&self, channel_id: &str) {

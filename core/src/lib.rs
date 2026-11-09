@@ -3,3 +3,5 @@ pub mod ports;
 
 pub mod facade;
 pub mod services;
+
+pub use services::{CatalogQuery, CategoryMatch};
