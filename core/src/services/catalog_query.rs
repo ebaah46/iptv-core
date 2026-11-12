@@ -1,6 +1,6 @@
 /**
-* A combined catalog query that composes search, country, language, and
-* category filters into a single request.
+* A combined catalog query that composes search, country, language,
+* category, and channel id filters into a single request.
 */
 
 /// How a channel is matched against the selected category ids.
@@ -19,7 +19,8 @@ pub enum CategoryMatch {
 ///
 /// Filters are optional: an unset or empty filter is ignored. Category
 /// matching is controlled by [`CategoryMatch`]; an empty category selection
-/// is treated as "no category filter" for every mode.
+/// is treated as "no category filter" for every mode. An empty channel id
+/// selection is treated as "no channel filter".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogQuery {
     search_term: Option<String>,
@@ -27,6 +28,7 @@ pub struct CatalogQuery {
     language_code: Option<String>,
     category_ids: Vec<String>,
     category_match: CategoryMatch,
+    channel_ids: Vec<String>,
     active_only: bool,
 }
 
@@ -38,6 +40,7 @@ impl Default for CatalogQuery {
             language_code: None,
             category_ids: Vec::new(),
             category_match: CategoryMatch::Any,
+            channel_ids: Vec::new(),
             active_only: true,
         }
     }
@@ -92,6 +95,24 @@ impl CatalogQuery {
         self
     }
 
+    /// Replaces the selected channel ids. A channel matches when its id
+    /// equals one of the selected ids (exact match). An empty selection
+    /// applies no channel filter.
+    pub fn channels<I, S>(mut self, ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.channel_ids = ids.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Adds one channel id to the selection.
+    pub fn channel(mut self, id: impl Into<String>) -> Self {
+        self.channel_ids.push(id.into());
+        self
+    }
+
     /// Includes channels without streams when set to `false`.
     pub fn active_only(mut self, active_only: bool) -> Self {
         self.active_only = active_only;
@@ -118,6 +139,10 @@ impl CatalogQuery {
         self.category_match
     }
 
+    pub fn channel_ids(&self) -> &[String] {
+        &self.channel_ids
+    }
+
     pub fn is_active_only(&self) -> bool {
         self.active_only
     }
@@ -136,6 +161,7 @@ mod tests {
         assert_eq!(query.language_code(), None);
         assert!(query.category_ids().is_empty());
         assert_eq!(query.category_match_mode(), CategoryMatch::Any);
+        assert!(query.channel_ids().is_empty());
         assert!(query.is_active_only());
     }
 
@@ -147,6 +173,7 @@ mod tests {
             .language("en")
             .categories(["news", "sports"])
             .category_match(CategoryMatch::All)
+            .channels(["ch1", "ch2"])
             .active_only(false);
 
         assert_eq!(query.search_term(), Some("news"));
@@ -156,6 +183,9 @@ mod tests {
         assert_eq!(query.category_ids()[0], "news");
         assert_eq!(query.category_ids()[1], "sports");
         assert_eq!(query.category_match_mode(), CategoryMatch::All);
+        assert_eq!(query.channel_ids().len(), 2);
+        assert_eq!(query.channel_ids()[0], "ch1");
+        assert_eq!(query.channel_ids()[1], "ch2");
         assert!(!query.is_active_only());
     }
 
@@ -184,5 +214,24 @@ mod tests {
             CatalogQuery::new().category_match_mode(),
             CategoryMatch::Any
         );
+    }
+
+    #[test]
+    fn channel_adds_to_the_selection() {
+        let query = CatalogQuery::new().channel("ch1").channel("ch2");
+
+        assert_eq!(query.channel_ids().len(), 2);
+        assert_eq!(query.channel_ids()[0], "ch1");
+        assert_eq!(query.channel_ids()[1], "ch2");
+    }
+
+    #[test]
+    fn channel_ids_replaces_the_selection() {
+        let query = CatalogQuery::new()
+            .channels(["ch1", "ch2"])
+            .channels(["ch3"]);
+
+        assert_eq!(query.channel_ids().len(), 1);
+        assert_eq!(query.channel_ids()[0], "ch3");
     }
 }

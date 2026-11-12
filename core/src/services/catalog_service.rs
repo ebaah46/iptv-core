@@ -4,6 +4,7 @@ use crate::services::LoadOutcome;
 use crate::services::catalog_query::{CatalogQuery, CategoryMatch};
 use anyhow::Result as Res;
 use log::info;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /**
@@ -141,6 +142,12 @@ impl CatalogService for IptvCatalogService {
             .map(String::as_str)
             .filter(|id| !id.trim().is_empty())
             .collect();
+        let channel_ids: HashSet<&str> = query
+            .channel_ids()
+            .iter()
+            .map(String::as_str)
+            .filter(|id| !id.trim().is_empty())
+            .collect();
 
         // Resolve the language to every country that speaks it once, rather
         // than re-scanning the country list for each channel.
@@ -162,6 +169,13 @@ impl CatalogService for IptvCatalogService {
             .get_channels()
             .into_iter()
             .filter(|channel| {
+                // An empty selection means "no channel filter".
+                let matches_channel =
+                    channel_ids.is_empty() || channel_ids.contains(channel.id.as_str());
+                if !matches_channel {
+                    return false;
+                }
+
                 if let Some(search) = &search {
                     let name_matches = channel.name.to_lowercase().contains(search.as_str());
                     let alt_matches = channel
@@ -1159,5 +1173,104 @@ mod tests {
         );
 
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn query_channel_ids_matches_only_selected_channels() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("a", "A", vec![], vec![], "US"),
+                channel_with("b", "B", vec![], vec![], "US"),
+                channel_with("c", "C", vec![], vec![], "US"),
+            ])
+            .with_streams_for_channels(&["a", "b", "c"]),
+        );
+
+        let result = svc.query(&CatalogQuery::new().channels(["a", "c"]));
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, "a");
+        assert_eq!(result[1].id, "c");
+    }
+
+    #[test]
+    fn query_channel_ids_empty_selection_is_no_filter() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("a", "A", vec![], vec![], "US"),
+                channel_with("b", "B", vec![], vec![], "US"),
+            ])
+            .with_streams_for_channels(&["a", "b"]),
+        );
+
+        assert_eq!(svc.query(&CatalogQuery::new()).len(), 2);
+    }
+
+    #[test]
+    fn query_channel_ids_ignores_empty_ids() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("a", "A", vec![], vec![], "US"),
+                channel_with("b", "B", vec![], vec![], "US"),
+            ])
+            .with_streams_for_channels(&["a", "b"]),
+        );
+
+        let result = svc.query(&CatalogQuery::new().channels(["", "   "]));
+
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn query_channel_ids_unknown_returns_empty() {
+        let svc = service(
+            MockCatalogRepository::new(vec![channel_with("a", "A", vec![], vec![], "US")])
+                .with_feedless_streams_for_channel("a"),
+        );
+
+        assert!(
+            svc.query(&CatalogQuery::new().channels(["missing"]))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn query_channel_ids_combines_with_other_filters() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("us-news", "US News", vec![], vec!["news"], "US"),
+                channel_with("us-sports", "US Sports", vec![], vec!["sports"], "US"),
+                channel_with("gb-news", "GB News", vec![], vec!["news"], "GB"),
+            ])
+            .with_streams_for_channels(&["us-news", "us-sports", "gb-news"]),
+        );
+
+        let result = svc.query(
+            &CatalogQuery::new()
+                .channels(["us-news", "us-sports", "gb-news"])
+                .country("US")
+                .categories(["news"]),
+        );
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "us-news");
+    }
+
+    #[test]
+    fn query_channel_ids_does_not_reorder_by_selection() {
+        let svc = service(
+            MockCatalogRepository::new(vec![
+                channel_with("a", "A", vec![], vec![], "US"),
+                channel_with("b", "B", vec![], vec![], "US"),
+                channel_with("c", "C", vec![], vec![], "US"),
+            ])
+            .with_streams_for_channels(&["a", "b", "c"]),
+        );
+
+        let result = svc.query(&CatalogQuery::new().channels(["c", "a"]));
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, "a");
+        assert_eq!(result[1].id, "c");
     }
 }

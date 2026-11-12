@@ -26,7 +26,7 @@ core/                          domain models, services, port traits (the hexagon
 adapters/
   iptv-adapter-rest/           implements ChannelDataSource — talks to the iptv-org API
   iptv-adapter-cache/          implements CacheStore — persists the catalog snapshot
-  iptv-adapter-persistence/    implements PersistencePort — favorites & settings
+  iptv-adapter-persistence/    implements FavoritesStore — persists favorite channel ids
 tests/                         integration tests against mocked ports
 ```
 
@@ -44,30 +44,37 @@ iptv-adapter-persistence = { git = "https://github.com/ebaah46/iptv-core", tag =
 
 Your application acts as the composition root: construct the concrete adapters above,
 plus your own `PlayerController` implementation (playback is platform-specific and not
-provided by this library), and wire them into `IptvLibraryFacade`:
+provided by this library), and wire them into `IptvFacade`:
 
 ```rust
-let facade = IptvLibraryFacade::new(
-IptvCatalogService::new(repository.clone()),
-IptvEpgService::new(repository.clone(), clock.clone()),
-IptvFavoritesService::new(persistence),
-IptvPlaybackController::new(player, resolver),
+use core::facade::IptvFacade;
+use core::services::{
+    CatalogService, IptvCatalogService, IptvFavoritesService, IpTvPlaybackController,
+};
+
+let facade = IptvFacade::new(
+    IptvCatalogService::new(repository.clone()),
+    IptvFavoritesService::new(persistence, repository.clone()),
+    IpTvPlaybackController::new(player, resolver),
 );
 
-let channels = facade.get_catalog().search("news");
-facade.play( & channel_id);
+let channels = facade.get_catalog_service().search("news");
+facade.get_playback_controller().play(&channel_id);
 ```
+
+The facade exposes service handles rather than mirroring their methods, so it
+stays small as new services are added.
 
 ### Combined catalog queries
 
-`CatalogQuery` combines search, country, language, and category filters into a
-single pass over the catalog. Category matching supports all, any, or none of
-the selected categories:
+`CatalogQuery` combines search, country, language, category, and channel id
+filters into a single pass over the catalog. Category matching supports all,
+any, or none of the selected categories:
 
 ```rust
 use core::{CatalogQuery, CategoryMatch};
 
-let channels = facade.query_catalog(
+let channels = facade.get_catalog_service().query(
     &CatalogQuery::new()
         .search("news")
         .country("US")
@@ -81,9 +88,34 @@ let channels = facade.query_catalog(
 - `CategoryMatch::Any` — a channel must have at least one selected category.
 - `CategoryMatch::None` — a channel must have none of the selected categories.
 
+Use `.channels([...])` to restrict results to specific channel ids (exact
+match), which is useful for querying favorites. An empty selection applies no
+channel filter.
+
 An empty category selection applies no category filter. Queries return only
 active channels by default; use `.active_only(false)` to include channels
 without streams.
+
+### Favorites
+
+Favorites are stored as channel ids and resolved against the catalog on demand,
+so they survive catalog refreshes and channel metadata changes. The core service
+owns the add/remove/toggle logic; the persistence adapter supplies a
+`FavoritesStore`:
+
+```rust
+use core::FavoritesService;
+
+let favorites = facade.get_favorites_service();
+
+favorites.add("BBCNews.uk")?;
+favorites.toggle("BBCNews.uk")?;
+let channels = favorites.get_favorites();
+```
+
+`get_favorite_ids()` returns the ids even before the catalog is loaded, while
+`get_favorites()` resolves them to `Channel`s and skips ids that are no longer
+in the catalog. Favorites are ordered most-recent-first.
 
 ## Building
 

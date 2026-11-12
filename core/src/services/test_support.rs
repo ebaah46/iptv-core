@@ -1,8 +1,10 @@
 use crate::domain::{
     Categories, Channel, Channels, Countries, Feeds, Languages, Logos, Stream, Streams,
 };
+use crate::ports::FavoritesStore;
 use crate::services::CatalogRepository;
-use anyhow::Result as Res;
+use anyhow::{Result as Res, anyhow};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -103,8 +105,11 @@ impl CatalogRepository for MockCatalogRepository {
         self.channels.clone()
     }
 
-    fn get_channel_by_id(&self, _channel_id: &str) -> Option<Arc<Channel>> {
-        None
+    fn get_channel_by_id(&self, channel_id: &str) -> Option<Arc<Channel>> {
+        self.channels
+            .iter()
+            .find(|channel| channel.id.as_str() == channel_id)
+            .cloned()
     }
 
     fn get_feeds_by_channel(&self, channel_id: &str) -> Option<Feeds> {
@@ -149,6 +154,64 @@ impl CatalogRepository for MockCatalogRepository {
 
     fn refresh(&self) -> Res<()> {
         self.refresh_count.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+/// A shared in-memory test double for `FavoritesStore`.
+///
+/// It records the persisted ids and the number of save calls so tests can
+/// verify write-through behaviour, and can be configured to fail either the
+/// initial load or subsequent saves.
+#[derive(Debug, Default)]
+pub(crate) struct MockFavoritesStore {
+    ids: Mutex<Vec<String>>,
+    fail_load: bool,
+    fail_save: bool,
+    save_calls: AtomicUsize,
+}
+
+impl MockFavoritesStore {
+    pub(crate) fn with_ids(ids: &[&str]) -> Self {
+        Self {
+            ids: Mutex::new(ids.iter().map(|id| id.to_string()).collect()),
+            ..Default::default()
+        }
+    }
+
+    pub(crate) fn failing_load(mut self) -> Self {
+        self.fail_load = true;
+        self
+    }
+
+    pub(crate) fn failing_save(mut self) -> Self {
+        self.fail_save = true;
+        self
+    }
+
+    pub(crate) fn save_calls(&self) -> usize {
+        self.save_calls.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn ids(&self) -> Vec<String> {
+        self.ids.lock().clone()
+    }
+}
+
+impl FavoritesStore for MockFavoritesStore {
+    fn load(&self) -> Res<Vec<String>> {
+        if self.fail_load {
+            return Err(anyhow!("load failed"));
+        }
+        Ok(self.ids.lock().clone())
+    }
+
+    fn save(&self, channel_ids: &[String]) -> Res<()> {
+        self.save_calls.fetch_add(1, Ordering::SeqCst);
+        if self.fail_save {
+            return Err(anyhow!("save failed"));
+        }
+        *self.ids.lock() = channel_ids.to_vec();
         Ok(())
     }
 }
