@@ -2,6 +2,7 @@ use crate::domain::{
     Categories, Channel, Channels, Countries, Feeds, Languages, Logos, Stream, Streams,
 };
 use crate::services::CatalogRepository;
+use anyhow::Result as Res;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -146,7 +147,8 @@ impl CatalogRepository for MockCatalogRepository {
         self.logos.clone()
     }
 
-    fn refresh(&self) {
+    fn refresh(&self) -> Res<()> {
         self.refresh_count.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 }

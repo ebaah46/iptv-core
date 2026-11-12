@@ -1,5 +1,6 @@
 use crate::domain::Channels;
-use crate::services::{CatalogQuery, CatalogService, PlaybackController};
+use crate::services::{CatalogQuery, CatalogService, LoadOutcome, PlaybackController};
+use anyhow::Result as Res;
 use std::sync::Arc;
 
 /**
@@ -20,7 +21,14 @@ pub trait CoreFacade {
 
     fn seek(&self, position: u32);
 
-    fn refresh(&self);
+    /// Load the catalog, preferring a fresh cache and falling back to the
+    /// network when the cache is missing or stale.
+    fn load_catalog(&self) -> Res<LoadOutcome> {
+        self.refresh()?;
+        Ok(LoadOutcome::network())
+    }
+
+    fn refresh(&self) -> Res<()>;
 }
 pub struct IptvFacade {
     pub catalog_service: Arc<dyn CatalogService>,
@@ -60,7 +68,11 @@ impl CoreFacade for IptvFacade {
         self.playback_controller.seek(position);
     }
 
-    fn refresh(&self) {
-        self.catalog_service.refresh();
+    fn load_catalog(&self) -> Res<LoadOutcome> {
+        self.catalog_service.load()
+    }
+
+    fn refresh(&self) -> Res<()> {
+        self.catalog_service.refresh()
     }
 }

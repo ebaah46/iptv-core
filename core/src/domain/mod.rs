@@ -1,3 +1,4 @@
+pub mod catalog;
 pub mod category;
 pub mod channel;
 pub mod country;
@@ -7,6 +8,7 @@ pub mod logo;
 pub mod program;
 pub mod stream;
 
+pub use catalog::CatalogSnapshot;
 pub use category::{Categories, Category};
 pub use channel::{Channel, Channels};
 pub use country::{Countries, Country};

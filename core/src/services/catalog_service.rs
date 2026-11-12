@@ -1,6 +1,8 @@
 use crate::domain::{Categories, Channels, Countries, Languages, Logos};
 use crate::services::CatalogRepository;
+use crate::services::LoadOutcome;
 use crate::services::catalog_query::{CatalogQuery, CategoryMatch};
+use anyhow::Result as Res;
 use log::info;
 use std::sync::Arc;
 
@@ -38,7 +40,14 @@ pub trait CatalogService: Send + Sync {
 
     fn get_logos(&self) -> Logos;
 
-    fn refresh(&self);
+    /// Load the catalog, preferring a fresh cache and falling back to the
+    /// network when the cache is missing or stale.
+    fn load(&self) -> Res<LoadOutcome> {
+        self.refresh()?;
+        Ok(LoadOutcome::network())
+    }
+
+    fn refresh(&self) -> Res<()>;
     // Other filtering APIs will be provided as we go. But for not, this
     // is what is available
 }
@@ -233,8 +242,12 @@ impl CatalogService for IptvCatalogService {
         self.inner.get_logos()
     }
 
-    fn refresh(&self) {
-        self.inner.refresh();
+    fn load(&self) -> Res<LoadOutcome> {
+        self.inner.load()
+    }
+
+    fn refresh(&self) -> Res<()> {
+        self.inner.refresh()
     }
 }
 
@@ -293,9 +306,9 @@ mod tests {
         let repo = Arc::new(MockCatalogRepository::new(vec![]));
         let svc = IptvCatalogService::new(repo.clone());
         assert_eq!(repo.refresh_count(), 0);
-        svc.refresh();
+        svc.refresh().unwrap();
         assert_eq!(repo.refresh_count(), 1);
-        svc.refresh();
+        svc.refresh().unwrap();
         assert_eq!(repo.refresh_count(), 2);
     }
 
@@ -309,7 +322,7 @@ mod tests {
             .with_streams_for_channels(&["bbc1", "cnn"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.get_all();
 
@@ -612,7 +625,7 @@ mod tests {
             .with_streams_for_channels(&["us1", "us2", "gb1"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("en");
 
@@ -636,7 +649,7 @@ mod tests {
             .with_streams_for_channels(&["us1", "gb1"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("en");
 
@@ -658,7 +671,7 @@ mod tests {
             .with_streams_for_channels(&["ca1", "us1"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("fr");
 
@@ -681,7 +694,7 @@ mod tests {
             .with_streams_for_channels(&["us1", "de1"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("de");
 
@@ -697,7 +710,7 @@ mod tests {
                 .with_feedless_streams_for_channel("us1"),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("en");
 
@@ -713,7 +726,7 @@ mod tests {
                 .with_feedless_streams_for_channel("us1"),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         assert!(svc.filter_by_language("xx").is_empty());
     }
@@ -726,7 +739,7 @@ mod tests {
                 .with_feedless_streams_for_channel("us1"),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         assert!(svc.filter_by_language("").is_empty());
     }
@@ -742,7 +755,7 @@ mod tests {
             .with_streams_for_channels(&["us1", "us2"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("en");
 
@@ -763,7 +776,7 @@ mod tests {
             .with_streams_for_channels(&["ca1", "us1"]),
         );
 
-        svc.refresh();
+        svc.refresh().unwrap();
 
         let result = svc.filter_by_language("fr");
 

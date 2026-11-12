@@ -1,4 +1,6 @@
-use crate::domain::{Categories, Channels, Countries, Feeds, Languages, Logos, Programs, Streams};
+use crate::domain::{
+    CatalogSnapshot, Categories, Channels, Countries, Feeds, Languages, Logos, Programs, Streams,
+};
 use anyhow::Result as Res;
 use std::fmt::Debug;
 
@@ -57,4 +59,20 @@ pub trait CacheStore: Debug + Send + Sync {
 
     // Retrieve cached logos
     fn load_logos(&self) -> Res<Logos>;
+
+    /// Load the whole catalog snapshot from the cache in one call.
+    ///
+    /// All-or-nothing: if any entity is missing, expired, or unreadable the
+    /// entire snapshot is considered unavailable and `None` is returned.
+    fn load_snapshot(&self) -> Option<CatalogSnapshot> {
+        Some(CatalogSnapshot {
+            channels: self.load_channels().ok()?,
+            feeds: self.load_feeds().ok()?,
+            streams: self.load_streams().ok()?,
+            categories: self.load_categories().ok()?,
+            countries: self.load_countries().ok()?,
+            languages: self.load_languages().ok()?,
+            logos: self.load_logos().ok()?,
+        })
+    }
 }

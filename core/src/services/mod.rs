@@ -8,7 +8,7 @@ pub(crate) mod stream_resolver;
 pub(crate) mod test_support;
 
 pub use catalog_query::{CatalogQuery, CategoryMatch};
-pub use catalog_repository::CatalogRepository;
+pub use catalog_repository::{CatalogRepository, CatalogSource, LoadOutcome};
 pub use catalog_service::{CatalogService, IptvCatalogService};
 pub use playback_controller::{IpTvPlaybackController, PlaybackController};
 pub use stream_resolver::{IptvStreamResolver, StreamResolver};
