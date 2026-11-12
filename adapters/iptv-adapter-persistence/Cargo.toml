@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+core.workspace = true
+anyhow.workspace = true
+log.workspace = true
+redb.workspace = true
+postcard.workspace = true
+serde.workspace = true

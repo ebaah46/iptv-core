@@ -971,7 +971,15 @@ dependencies = [
 
 [[package]]
 name = "iptv-adapter-persistence"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "core",
+ "log",
+ "postcard",
+ "redb",
+ "serde",
+]
 
 [[package]]
 name = "iptv-adapter-player"
