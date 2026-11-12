@@ -1,43 +1,35 @@
-use crate::domain::Channels;
-use crate::services::{CatalogQuery, CatalogService, LoadOutcome, PlaybackController};
-use anyhow::Result as Res;
+use crate::services::{CatalogService, FavoritesService, PlaybackController};
 use std::sync::Arc;
 
 /**
 * This facade is the main entry point for the core library.
-* It organizes or the different components provided by the core under
-* a single struct provides a unified interface for the IPTV core system.
+* It organizes the different components provided by the core under a single
+* struct and exposes their handles. Each service owns its own operations, so
+* the facade stays readable as more and more features are added.
 */
 pub trait CoreFacade {
     fn get_catalog_service(&self) -> Arc<dyn CatalogService>;
 
-    /// Runs a combined catalog query through the catalog service.
-    fn query_catalog(&self, query: &CatalogQuery) -> Channels;
+    fn get_favorites_service(&self) -> Arc<dyn FavoritesService>;
 
-    fn play(&self, channel_id: &str);
-
-    fn pause(&self);
-    fn stop(&self);
-
-    fn seek(&self, position: u32);
-
-    /// Load the catalog, preferring a fresh cache and falling back to the
-    /// network when the cache is missing or stale.
-    fn load_catalog(&self) -> Res<LoadOutcome> {
-        self.refresh()?;
-        Ok(LoadOutcome::network())
-    }
-
-    fn refresh(&self) -> Res<()>;
+    fn get_playback_controller(&self) -> Arc<dyn PlaybackController>;
 }
+
 pub struct IptvFacade {
     pub catalog_service: Arc<dyn CatalogService>,
+    pub favorites_service: Arc<dyn FavoritesService>,
     pub playback_controller: Arc<dyn PlaybackController>,
 }
+
 impl IptvFacade {
-    pub fn new(catalog: Arc<dyn CatalogService>, player: Arc<dyn PlaybackController>) -> Self {
+    pub fn new(
+        catalog: Arc<dyn CatalogService>,
+        favorites: Arc<dyn FavoritesService>,
+        player: Arc<dyn PlaybackController>,
+    ) -> Self {
         Self {
             catalog_service: catalog,
+            favorites_service: favorites,
             playback_controller: player,
         }
     }
@@ -48,31 +40,11 @@ impl CoreFacade for IptvFacade {
         self.catalog_service.clone()
     }
 
-    fn query_catalog(&self, query: &CatalogQuery) -> Channels {
-        self.catalog_service.query(query)
+    fn get_favorites_service(&self) -> Arc<dyn FavoritesService> {
+        self.favorites_service.clone()
     }
 
-    fn play(&self, channel_id: &str) {
-        self.playback_controller.play(channel_id);
-    }
-
-    fn pause(&self) {
-        self.playback_controller.pause();
-    }
-
-    fn stop(&self) {
-        self.playback_controller.stop();
-    }
-
-    fn seek(&self, position: u32) {
-        self.playback_controller.seek(position);
-    }
-
-    fn load_catalog(&self) -> Res<LoadOutcome> {
-        self.catalog_service.load()
-    }
-
-    fn refresh(&self) -> Res<()> {
-        self.catalog_service.refresh()
+    fn get_playback_controller(&self) -> Arc<dyn PlaybackController> {
+        self.playback_controller.clone()
     }
 }
